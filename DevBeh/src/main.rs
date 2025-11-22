@@ -68,6 +68,7 @@ fn write_csv_header(path: &str) -> Result<(), Box<dyn std::error::Error>> {
         "mu", // mutation rate of loci
         "sigma0", // Locus determining prior alpha
         "sigma_cue",
+        "div_rate",
         "varsigma", // the maximum sample size an individual is able to gather from cues
         "mean_fitness",
         "m",
@@ -76,7 +77,8 @@ fn write_csv_header(path: &str) -> Result<(), Box<dyn std::error::Error>> {
         "rho",
         "nu",
         "gamma",
-        "lambda"
+        "lambda",
+        "x"
     ])?;
 
     wtr.flush()?;
@@ -106,6 +108,7 @@ fn write_csv_header2(path: &str) -> Result<(), Box<dyn std::error::Error>> {
         "mu", // mutation rate of loci
         "sigma0", // Locus determining prior alpha
         "sigma_cue",
+        "div_rate",
         "varsigma", // the maximum sample size an individual is able to gather from cues
         "mean_fitness",
         "m",
@@ -114,7 +117,8 @@ fn write_csv_header2(path: &str) -> Result<(), Box<dyn std::error::Error>> {
         "rho",
         "nu",
         "gamma",
-        "lambda"
+        "lambda",
+        "x"
     ])?;
 
     wtr.flush()?;
@@ -169,6 +173,8 @@ struct Agent {
     pi: f64,
     q: f64,
     fitness: f64,
+    u:f64, // negotiated parental effort
+    partner:Option<usize>, // partner id
     m: f64, // Loci determining gradient of observation effort against pace-of-life
     c: f64, // Locus determining effort intercept of observation effort against POL
     u_base: f64, // Locus - baseline parental effort
@@ -176,8 +182,7 @@ struct Agent {
     nu: f64, // locus - influence of self POL information on negotiation
     lambda:f64, // locus - influence of prior partner bids on negotiation
     gamma:f64, // locus - influence of partner POL information on negotiation
-    u:f64, // negotiated parental effort
-    partner:Option<usize>, // partner id
+    x:f64, // Expected POL
 }
 #[derive(Clone, Debug)]
 struct Environment {
@@ -199,6 +204,7 @@ struct Environment {
     varsigma:f64, // the maximum sample size an individual is able to gather from cues
     theta:f64, // slope of mortality against q-value
     mut_size:f64, // standard deviation of mutations
+    div_rate:f64, // divorce rate
 }
 
 // Implementations
@@ -207,24 +213,23 @@ impl Agent {
 
         let mut rng = rand::thread_rng();
 
-        let mut dice: f64 = rng.gen();
+        let mut dice: f64 = rng.gen(); //m
         if dice <= mu { //mutates
             // mutate loci
             // loc0: f64, between 0.5 and 1. (proportion)
             let n = nm::new(self.m, mut_size as f64).unwrap(); // generates normal distribution 
             let loc_mut = n.sample(&mut rng);
-            // if loc_mut < -1. {
-            //     self.m = -1.;
-            // } else if loc_mut > 1.{
-            //     self.m = 1.;
-            // } else {
-            //     self.m = loc_mut;
-            // }
+            if loc_mut < -1. {
+                self.m = -1.;
+            } else if loc_mut > 1.{
+                self.m = 1.;
+            } else {
                 self.m = loc_mut;
+            }
         }
             
 
-        dice = rng.gen();
+        dice = rng.gen(); //c
         if dice <= mu { //mutates
             // loc2: f64 (c)
             // observation effort intercept
@@ -240,7 +245,7 @@ impl Agent {
         }
 
         
-        dice = rng.gen();
+        dice = rng.gen(); //ubase
         if dice <= mu { //mutates
             // loc2: f64 (u)
             // parental effort baseline
@@ -255,7 +260,7 @@ impl Agent {
             }
         }
 
-        dice = rng.gen();
+        dice = rng.gen(); //rho
         if dice <= mu { //mutates
             // loc2: f64 (rho)
             // parental effort selfishness bias
@@ -270,7 +275,7 @@ impl Agent {
             }
         }
 
-        dice = rng.gen();
+        dice = rng.gen(); //nu
         if dice <= mu { //mutates
             // loc2: f64 (nu)
             // pace-of-life influence effort baseline
@@ -286,7 +291,7 @@ impl Agent {
         }
 
         
-        dice = rng.gen();
+        dice = rng.gen(); //lambda
         if dice <= mu { //mutates
             // loc3: f64, between 0. and 1. (lambda)
             // scales the perceived informativeness of partner gathering outcomes.
@@ -301,7 +306,7 @@ impl Agent {
             }
         }
         
-        dice = rng.gen();
+        dice = rng.gen(); //gamma
         if dice <= mu { //mutates
             // loc3: f64, between 0. and 1. (lambda)
             // scales the perceived informativeness of partner gathering outcomes.
@@ -315,10 +320,18 @@ impl Agent {
                 self.gamma = loc_mut;
             }
         }
+
+        dice = rng.gen(); //x
+        if dice <= mu { //mutates
+            // x
+            let n = nm::new(self.gamma, mut_size as f64).unwrap(); // generates normal distribution 
+            let loc_mut = n.sample(&mut rng);
+            self.x = loc_mut;
+        }
     }
 
     fn pol_v(&self) -> f64 {
-        return self.c / (1. + (self.m * self.q ).exp());
+        return self.c / (1. + (self.m * (self.q) ).exp());
     }
 
     fn social_cue(&mut self, partner_q:f64, sigma_cue:f64, n:i64) {
@@ -359,24 +372,25 @@ impl Environment {
             return ();
         }
         self.dead.push(i);
-        self.pop[i].fitness=0.;
-        if let Some(index) = self.singles.iter().position(|a| *a == i) {
-            self.singles.remove(index);
-        } else if let Some(index) = self.pairs.iter().position(|(a, _)| *a == i){
-            let widow = self.pairs[index].1;
-            self.singles.push(widow);
-            self.pairs.remove(index);
-        } else if let Some(index) = self.pairs.iter().position(|(_, a)| *a == i) {
-            let widow = self.pairs[index].0;
-            self.singles.push(widow);
-            self.pairs.remove(index);
+    }
+
+    fn widowed(&mut self) {
+        for i in 0..self.dead.len() {
+            let partner_id: Option<usize> = self.pop[self.dead[i]].partner;
+            match partner_id {
+                None => (),
+                _ => {
+                    self.pop[self.dead[i]].partner = None;
+                    self.pop[partner_id.unwrap()].partner = None;
+                }
+            }
         }
     }
 
     fn development(&mut self) {
-        let normal = Normal::new(0.0, self.sigma0).unwrap();
         let mut phen:f64;
         for i in 0..self.pop.len() {
+            let normal = Normal::new(self.pop[i].x, self.sigma0).unwrap();
             phen = normal.sample(&mut thread_rng());
             self.pop[i].q = phen;
         }
@@ -392,62 +406,68 @@ impl Environment {
         }
     }
 
-    fn divorce(&mut self) {
-        self.pairs.clear();
-        self.singles.clear();
+    fn divorce(&mut self) { // divorce with prob div_rate
+        
+        let mut rng = rand::thread_rng();
+
         for i in 0..self.pop.len() {
-            self.singles.push(i);
+            
+            let dice: f64 = rng.gen(); 
+            if dice < self.div_rate {
+                match self.pop[i].partner {
+                    None => (),
+                    _ => {
+                        let partner_id: usize = self.pop[i].partner.unwrap();
+                        self.pop[partner_id].partner = None;
+                        self.pop[i].partner = None;
+                    }
+                }
+            }
         }
     }
 
-    fn pairing_pool(&mut self) {
+    fn pairing_pool(&mut self) { // divorces and then all attempt to pair
         // all pairs divorce
         self.divorce();
-        // Pairing pool - Pair up single individuals:
-        self.singles.shuffle(&mut thread_rng());
 
-        // singles pair up
-        if self.singles.len() > 0 {
-            while self.singles.len() > 0 {
-                // partner is the one just before on the list
-                let last = self.singles.len()-1;
-                    
-                // prior beliefs reset to pop prior
-                self.pop[self.singles[last]].sigma = self.sigma0; 
-                self.pop[self.singles[last]].pi = 0.; 
-                self.pop[self.singles[last]].partner = Some(self.singles[last-1]);
-                self.pop[self.singles[last-1]].sigma = self.sigma0;
-                self.pop[self.singles[last-1]].pi = 0.;
-                self.pop[self.singles[last-1]].partner = Some(self.singles[last]);
+        // Collect only those who are actually single
+        let mut available: Vec<usize> = self.singles
+            .iter()
+            .copied()
+            .filter(|i| self.pop[*i].partner.is_none())
+            .collect();
 
-                // pairbond edge added to couples network
-                self.pairs.push((self.singles.pop().unwrap(),self.singles.pop().unwrap()));
+        available.shuffle(&mut thread_rng()); // shuffle the true singles
+
+        // Pair them in adjacent pairs
+        for chunk in available.chunks(2) {
+            if let [a, b] = chunk {
+                // initialize states
+                self.pop[*a].sigma = self.sigma0;
+                self.pop[*a].pi = self.pop[*a].x;
+                self.pop[*a].partner = Some(*b);
+
+                self.pop[*b].sigma = self.sigma0;
+                self.pop[*b].pi = self.pop[*b].x;
+                self.pop[*b].partner = Some(*a);
             }
         }
-        
     }
 
     fn observations(&mut self) {
         let mut v_f: f64;
-        let mut v_m: f64;
         let mut n_f: i64;
-        let mut n_m: i64;
-        let mut q_f: f64;
         let mut q_m: f64;
-        for i in 0..self.pairs.len(){
-            let female = self.pairs[i].0;
-            let male = self.pairs[i].1;
+        for i in 0..self.pop.len(){
+            let female = i;
+            let male = self.pop[i].partner.unwrap();
             v_f = self.pop[female].pol_v();
-            v_m = self.pop[male].pol_v();
 
             n_f = (v_f * self.varsigma) as i64;
-            n_m = (v_m * self.varsigma) as i64;
 
-            q_f = self.pop[female].q;
             q_m = self.pop[male].q;
             
             self.pop[female].social_cue(q_m, self.sigma_cue, n_f);
-            self.pop[male].social_cue(q_f, self.sigma_cue, n_m);
         } 
     }
 
@@ -463,38 +483,40 @@ impl Environment {
         let mut q1:f64;
         let mut q2:f64;
         let mut pred:f64;
-        
-        for i in 0..self.pairs.len(){
-            female = self.pairs[i].0;
-            male = self.pairs[i].1;
-            let mut gen: f64 = 0.;
-            dif = 9999.;
-            u1=0.;
-            u2=0.;
-            old=u1+u2;
 
-            // negotiations:
-            // while dif > self.tol {
-            for _j in 0..100 {
-                // Observation preference
-                gen+=1.;
-                u1 = self.pop[male].r(u2);
-                u2 = self.pop[female].r(u1);
-                dif = (u1 + u2)-old;
-                old = u1 + u2;
-                // println!("gen: {}, dif: {}, old: {}, u1: {}, u2: {}", gen, dif, old, u1, u2)
+        for i in 0..self.pop.len(){
+            female = i;
+            male = self.pop[i].partner.unwrap();
+            if male > female { // so that there aren't repeats
+                let mut gen: f64 = 0.;
+                dif = 9999.;
+                u1=0.;
+                u2=0.;
+                old=u1+u2;
+
+                // negotiations:
+                // while dif > self.tol {
+                for _j in 0..100 {
+                    // Observation preference
+                    gen+=1.;
+                    u1 = self.pop[male].r(u2);
+                    u2 = self.pop[female].r(u1);
+                    dif = (u1 + u2)-old;
+                    old = u1 + u2;
+                    // println!("gen: {}, dif: {}, old: {}, u1: {}, u2: {}", gen, dif, old, u1, u2)
+                }
+                
+                self.pop[male].u = u1;
+                self.pop[female].u = u2;
+
+                ben = self.b_f * (u1 + u2);
+                q1 = self.pop[male].q;
+                q2 = self.pop[female].q;
+                pred = self.b_s * (u1 * (1. / (1.+(-q1 * self.theta).exp())) + u2 * (1. / (1.+(-q2 * self.theta).exp())));
+                
+                self.pop[male].fitness = (0. as f64).max(ben * pred / 2.);
+                self.pop[female].fitness = (0. as f64).max(ben * pred / 2.);
             }
-            
-            self.pop[male].u = u1;
-            self.pop[female].u = u2;
-
-            ben = self.b_f * (u1 + u2);
-            q1 = self.pop[male].q;
-            q2 = self.pop[female].q;
-            pred = self.b_s * (u1 * (1. / (1.+(-q1 * self.theta).exp())) + u2 * (1. / (1.+(-q2 * self.theta).exp())));
-            
-            self.pop[male].fitness = (0. as f64).max(ben * pred / 2.);
-            self.pop[female].fitness = (0. as f64).max(ben * pred / 2.);
         }
     }
 
@@ -526,6 +548,7 @@ impl Environment {
         for i in 0..self.dead.len() {
             // choose parent
             selected_male = wa_table.next_rng(&mut rng);
+            // println!("{}, fit: {}",selected_male, self.pop[selected_male].fitness);
             selected_female = self.pop[selected_male].partner.unwrap();
 
             // println!("{}", self.pop[selected].fitness);
@@ -537,23 +560,26 @@ impl Environment {
             self.pop[self.dead[i]].nu = (self.pop[selected_male].nu + self.pop[selected_female].nu) / 2. ;
             self.pop[self.dead[i]].lambda = (self.pop[selected_male].lambda + self.pop[selected_female].lambda) / 2. ;
             self.pop[self.dead[i]].gamma = (self.pop[selected_male].gamma + self.pop[selected_female].gamma) / 2. ;
+            self.pop[self.dead[i]].x = (self.pop[selected_male].x + self.pop[selected_female].x) / 2. ;
             self.pop[self.dead[i]].fitness = 0.;
+            // self.pop[self.dead[i]].partner = None;
 
             // apply mutations to policies
             self.pop[self.dead[i]].mutate(self.mu, self.mut_size);   
         }
-        
-        // move dead into singles
-        while self.dead.len() > 0 {
-            let index = self.dead[self.dead.len() - 1];
-            self.pop[index].fitness=0.;
-            self.pop[index].sigma=self.sigma0;
-            self.pop[index].pi=0.;
+        self.widowed();
+        self.dead.clear();
+        // // move dead into singles
+        // while self.dead.len() > 0 {
+        //     let index = self.dead[self.dead.len() - 1];
+        //     self.pop[index].fitness=0.;
+        //     self.pop[index].sigma=self.sigma0;
+        //     self.pop[index].pi=0.;
 
-            // add developmental noise
+        //     // add developmental noise
 
-            self.singles.push(self.dead.pop().unwrap());
-        }
+        //     self.singles.push(self.dead.pop().unwrap());
+        // }
     }
 
     fn csvgen(&mut self, pop_len:f64, i:f64) -> Vec<f64> {
@@ -565,6 +591,7 @@ impl Environment {
         let mut mean_loc_nu = 0.;
         let mut mean_loc_gamma = 0.;
         let mut mean_loc_lambda = 0.;
+        let mut mean_loc_x:f64=0.;
         // println!("Generation: {}, Mean_fitness: {:.4}, prior_wet: {:.4}, prior_general: {:.4}, prior_dry: {:.4}, prop_obs: {:.4}", 
             // i, env.mean_fitness, env.prop_obs);
         for a in &self.pop {
@@ -575,6 +602,7 @@ impl Environment {
             mean_loc_nu += a.nu;
             mean_loc_lambda += a.lambda;
             mean_loc_gamma += a.gamma;
+            mean_loc_x += a.x;
         }
         mean_loc_m = mean_loc_m/pop_len;
         mean_loc_c = mean_loc_c/pop_len;
@@ -583,6 +611,7 @@ impl Environment {
         mean_loc_nu = mean_loc_nu/pop_len;
         mean_loc_lambda = mean_loc_lambda/pop_len;
         mean_loc_gamma = mean_loc_gamma/pop_len;
+        mean_loc_x = mean_loc_x/pop_len;
             
         data.push(i);
         data.push(pop_len);
@@ -595,6 +624,7 @@ impl Environment {
         data.push(self.mu); // mutation rate of loci
         data.push(self.sigma0); // Locus determining prior alpha
         data.push(self.sigma_cue);
+        data.push(self.div_rate);
         data.push(self.varsigma); // the maximum sample size an individual is able to gather from cues
         data.push(self.mean_fitness as f64);
         data.push(mean_loc_m);
@@ -604,6 +634,7 @@ impl Environment {
         data.push(mean_loc_nu);
         data.push(mean_loc_gamma);
         data.push(mean_loc_lambda);
+        data.push(mean_loc_x);
         return data
     }
 
@@ -663,6 +694,8 @@ fn main() -> std::io::Result<()>  {
             pi: 0.,
             q: 0.5,
             fitness: 0.,
+            u:0., 
+            partner:None,
             m: 0., // Loci determining gradient of observation effort against pace-of-life
             c: 0., // Locus determining effort intercept of observation effort against POL
             u_base: 1., // locus - perceived optimal partner effort
@@ -670,8 +703,7 @@ fn main() -> std::io::Result<()>  {
             nu: 1., // locus - influence of self POL information on negotiation
             lambda: 0., // locus - influence of prior partner bids on negotiation
             gamma: -0.5, // locus - influence of partner POL information on negotiation
-            u:0., 
-            partner:None,
+            x:0.,
         };
         
         let mut env = Environment {
@@ -693,6 +725,7 @@ fn main() -> std::io::Result<()>  {
             varsigma:10.0, // the maximum sample size an individual is able to gather from cues
             theta: 2.0, // sigmoid slope of mortality risk against q-value
             mut_size:0.25,
+            div_rate:1.0, // divorce rate
         };
         
 
@@ -700,16 +733,16 @@ fn main() -> std::io::Result<()>  {
         let mut r = RSession::new()?;
         r.exec("source('src/b_s.r')")?;
 
-    ///////////////////////////////////////////////////// Run b_s simulations
+    ////////////////////////////////////////////////////// Run divorce sims
         // Construct the full path
-        let path = format!("./Results/{}/b_s/", project_id);
+        let path = format!("./Results/{}/divorce/", project_id);
         let path_construct = Path::new(&path);
         // Ensure parent directory exists
         let _ = fs::create_dir_all(path_construct); // Create directory path if it doesn't exist
         let _ = write_csv_header(&path);
-        // Choose parameter range
-        let data_1 = vec![0.0,0.1,0.2,0.3,0.4];
-        let data_2 = vec![0.5,0.6,0.7,0.8,0.9,1.0];
+        // Set parameter range
+        let data_1 = vec![0.,0.1,0.2,0.3,0.4];
+        let data_2 = vec![0.5,0.7,0.8,0.9,1.0];
         // Run!
         for g in 0..num_trials {  
             agent.mutate(1.0, 0.5); // randomize resident loci
@@ -717,37 +750,83 @@ fn main() -> std::io::Result<()>  {
 
             data_1.par_iter().for_each(|x| {
                 let mut env = env.clone();
-                env.b_s = *x;
+                env.div_rate = *x;
+                println!("Simulation started: divorce: {}, trial: {}", env.div_rate, g);
                 run(
                     generations, 
                     &path, 
-                    Some(&(x.to_string()+"_bs_")), 
+                    Some(&(x.to_string()+"_divorce_")), 
                     Some(&g),
                     env
                 );
-                println!("Simulation done: b_s: {}, trial: {}", *x, g);
+                println!("Simulation done: divorce: {}, trial: {}", *x, g);
             });
 
-            r.exec(&format!("run_b_s_plot('{}')", path))?;
+            r.exec(&format!("run_divorce_plot('{}')", path))?;
 
             data_2.par_iter().for_each(|x| {
                 let mut env = env.clone();
-                env.b_s = *x;
+                env.div_rate = *x;
+                println!("Simulation started: divorce: {}, trial: {}", env.div_rate, g);
+                run(
+                    generations, 
+                    &path, 
+                    Some(&(x.to_string()+"_divorce_")), 
+                    Some(&g),
+                    env
+                );
+                println!("Simulation done: divorce: {}, trial: {}", *x, g);
+            });
+
+            r.exec(&format!("run_divorce_plot('{}')", path))?;
+        }
+
+    ////////////////////////////////////////////////////// Run mort sims
+        // Construct the full path
+        let path = format!("./Results/{}/mort/", project_id);
+        let path_construct = Path::new(&path);
+        // Ensure parent directory exists
+        let _ = fs::create_dir_all(path_construct); // Create directory path if it doesn't exist
+        let _ = write_csv_header(&path);
+        // Set parameter range
+        let data_1 = vec![0.,0.1,0.2,0.3,0.4];
+        let data_2 = vec![0.5,0.7,0.8,0.9,1.0];
+        // Run!
+        for g in 0..num_trials {  
+            agent.mutate(1.0, 0.5); // randomize resident loci
+            env.pop = init_pop(1000, agent);
+
+            data_1.par_iter().for_each(|x| {
+                let mut env = env.clone();
+                env.s_p = *x;
+                run(
+                    generations, 
+                    &path, 
+                    Some(&(x.to_string()+"_mort_")), 
+                    Some(&g),
+                    env
+                );
+                println!("Simulation done: mort (s_p): {}, trial: {}", *x, g);
+            });
+
+            r.exec(&format!("run_mort_plot('{}')", path))?;
+
+            data_2.par_iter().for_each(|x| {
+                let mut env = env.clone();
+                env.s_p = *x;
                 
                 run(
                     generations, 
                     &path, 
-                    Some(&(x.to_string()+"_bs_")), 
+                    Some(&(x.to_string()+"_mort_")), 
                     Some(&g),
                     env
                 );
-                println!("Simulation done: b_s: {}, trial: {}", *x, g);
+                println!("Simulation done: mort (s_p): {}, trial: {}", *x, g);
             });
 
-            r.exec(&format!("run_b_s_plot('{}')", path))?;
+            r.exec(&format!("run_mort_plot('{}')", path))?;
         }
-    
-
 
     ////////////////////////////////////////////////////// Run POL sigma sims
         // Construct the full path
@@ -774,7 +853,7 @@ fn main() -> std::io::Result<()>  {
                     Some(&g),
                     env
                 );
-                println!("Simulation done: b_s: {}, trial: {}", *x, g);
+                println!("Simulation done: sigma: {}, trial: {}", *x, g);
             });
 
             r.exec(&format!("run_sigma_plot('{}')", path))?;
@@ -790,7 +869,7 @@ fn main() -> std::io::Result<()>  {
                     Some(&g),
                     env
                 );
-                println!("Simulation done: b_s: {}, trial: {}", *x, g);
+                println!("Simulation done: sigma: {}, trial: {}", *x, g);
             });
 
             r.exec(&format!("run_sigma_plot('{}')", path))?;
@@ -889,5 +968,54 @@ fn main() -> std::io::Result<()>  {
 
             r.exec(&format!("run_cuecost_plot('{}')", path))?;
         }
+
+        
+    ///////////////////////////////////////////////////// Run b_s simulations
+        // Construct the full path
+        let path = format!("./Results/{}/b_s/", project_id);
+        let path_construct = Path::new(&path);
+        // Ensure parent directory exists
+        let _ = fs::create_dir_all(path_construct); // Create directory path if it doesn't exist
+        let _ = write_csv_header(&path);
+        // Choose parameter range
+        let data_1 = vec![0.0,0.1,0.2,0.3,0.4];
+        let data_2 = vec![0.5,0.6,0.7,0.8,0.9,1.0];
+        // Run!
+        for g in 0..num_trials {  
+            agent.mutate(1.0, 0.5); // randomize resident loci
+            env.pop = init_pop(1000, agent);
+
+            data_1.par_iter().for_each(|x| {
+                let mut env = env.clone();
+                env.b_s = *x;
+                run(
+                    generations, 
+                    &path, 
+                    Some(&(x.to_string()+"_bs_")), 
+                    Some(&g),
+                    env
+                );
+                println!("Simulation done: b_s: {}, trial: {}", *x, g);
+            });
+
+            r.exec(&format!("run_b_s_plot('{}')", path))?;
+
+            data_2.par_iter().for_each(|x| {
+                let mut env = env.clone();
+                env.b_s = *x;
+                
+                run(
+                    generations, 
+                    &path, 
+                    Some(&(x.to_string()+"_bs_")), 
+                    Some(&g),
+                    env
+                );
+                println!("Simulation done: b_s: {}, trial: {}", *x, g);
+            });
+
+            r.exec(&format!("run_b_s_plot('{}')", path))?;
+        }
+    
     Ok(())
 }
