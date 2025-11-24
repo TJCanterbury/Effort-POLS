@@ -28,7 +28,7 @@ run_b_s_plot <- function(path) {
                              color = `Negotiation Loci`,
                              group = `Negotiation Loci`)) +
     geom_point(alpha = 0.3, size = 1) +
-    geom_smooth(se=FALSE, method = "gam", formula = y ~ s(x, bs = "cs")) +
+    geom_smooth(method = "gam") +
     theme_classic(base_size = 12) +
     xlab("Survival benefits of parental care (b_s)") +
     coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) +
@@ -48,6 +48,42 @@ run_b_s_plot <- function(path) {
 
   # Open PDF
   pdf(paste0(path, "b_s.pdf"), width = 8, height = 6)
+
+  # Stack plots with patchwork (same width)
+  # print(p1 / p2 + plot_layout(ncol = 1, heights = c(1,1)))
+  print(p1)
+
+  # Close PDF
+  dev.off()
+}
+
+run_b_f_plot <- function(path) {
+
+  # Read CSV
+  readfile <- read.csv(paste0(path, "summaries.csv"))
+
+  # Prepare datasets
+  df_long1 <- readfile %>%
+    select(b_f, u_base, rho, nu,
+           gamma, lambda, c, m,x) %>%
+    gather(`Loci`, Value, -b_f)
+
+  # Determine shared x-axis limits
+  x_limits <- range(readfile$b_f)
+
+  # First plot
+  p1 <- ggplot(df_long1, aes(x = b_f, y = Value,
+                             color = `Loci`,
+                             group = `Loci`)) +
+    geom_point(alpha = 0.3, size = 1) +
+    geom_smooth(method = "gam") +
+    theme_classic(base_size = 12) +
+    xlab("Benefits of parental care (b_f)") +
+    coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) +
+    scale_color_viridis_d(option = "turbo")  # different color set
+
+  # Open PDF
+  pdf(paste0(path, "b_f.pdf"), width = 8, height = 6)
 
   # Stack plots with patchwork (same width)
   # print(p1 / p2 + plot_layout(ncol = 1, heights = c(1,1)))
@@ -80,7 +116,7 @@ run_sigma_plot <- function(path) {
                              color = `Negotiation Loci`,
                              group = `Negotiation Loci`)) +
     geom_point(alpha = 0.3, size = 1) +
-    geom_smooth(se=FALSE, method = "gam", formula = y ~ s(x, bs = "cs")) +
+    geom_smooth(method = "gam") +
     theme_classic(base_size = 12) +
     xlab("Standard deviation of pace-of-life phenotype (sigma)") +
     coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) +
@@ -132,7 +168,7 @@ run_sigmacue_plot <- function(path) {
                              color = `Negotiation Loci`,
                              group = `Negotiation Loci`)) +
     geom_point(alpha = 0.3, size = 1) +
-    geom_smooth(se=FALSE, method = "gam", formula = y ~ s(x, bs = "cs")) +
+    geom_smooth(method = "gam") +
     theme_classic(base_size = 12) +
     xlab("Standard deviation of social cue") +
     coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) +
@@ -171,36 +207,18 @@ run_cuecost_plot <- function(path) {
     select(c_v, u_base, rho, nu,
            gamma, lambda, c, m,x) %>%
     gather(`Loci`, Value, -c_v)
-
-  # df_long2 <- readfile %>%
-  #   select(c_v) %>%
-  #   gather(`Loci`, Value, -c_v)
-
-  # Determine shared x-axis limits
-  x_limits <- range(readfile$c_v)
-
+    
+    
   # First plot
   p1 <- ggplot(df_long1, aes(x = c_v, y = Value,
                              color = `Loci`,
                              group = `Loci`)) +
     geom_point(alpha = 0.3, size = 1) +
-    geom_smooth(se=FALSE, method = "gam", formula = y ~ s(x, bs = "cs")) +
+    geom_smooth(method = "gam") +
     theme_classic(base_size = 12) +
     xlab("Cost of social cue (c_v)") +
-    coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) +
+    coord_cartesian(xlim = c(0, 1), ylim = c(-1, 1)) +
     scale_color_viridis_d(option = "turbo")  # different color set
-
-  # Second plot
-  # p2 <- ggplot(df_long2, aes(x = c_v, y = Value,
-  #                            color = `Loci`,
-  #                            group = `Loci`)) +
-  #   geom_point(alpha = 0.3, size = 1) +
-  #   geom_smooth(se=FALSE, method = "gam", formula = y ~ s(x, bs = "cs")) +
-  #   theme_classic(base_size = 12) +
-  #   xlab("Cost of social cue (c_v)") +
-  #   coord_cartesian(xlim = x_limits) +
-  #   scale_color_brewer(palette = "Set2") + 
-  #   theme(legend.title = element_blank())
 
   # Open PDF
   pdf(paste0(path, "cue_cost.pdf"), width = 8, height = 6)
@@ -236,7 +254,7 @@ run_mort_plot <- function(path) {
                              color = `Loci`,
                              group = `Loci`)) +
     geom_point(alpha = 0.3, size = 1) +
-    geom_smooth(se=FALSE, method = "gam", formula = y ~ s(x, bs = "cs")) +
+    geom_smooth(method = "gam") +
     theme_classic(base_size = 12) +
     xlab("Baseline survival rate (s_p)") +
     coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) +
@@ -284,7 +302,7 @@ run_divorce_plot <- function(path) {
                              color = `Loci`,
                              group = `Loci`)) +
     geom_point(alpha = 0.3, size = 1) +
-    geom_smooth(se=FALSE, method = "gam", formula = y ~ s(x, bs = "cs")) +
+    geom_smooth(method = "gam") +
     theme_classic(base_size = 12) +
     xlab("Divorce rate") +
     coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) +
