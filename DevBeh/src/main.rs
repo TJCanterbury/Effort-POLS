@@ -1,7 +1,7 @@
 use rand::Rng;
 use rand::thread_rng;
 use rand::seq::SliceRandom;
-use rand_distr::{Normal, Distribution};
+use rand_distr::{Beta, Distribution};
 use statrs::distribution::{Normal as nm};
 use weighted_rand::builder::*;
 use std::error::Error;
@@ -68,7 +68,6 @@ fn write_csv_header(path: &str) -> Result<(), Box<dyn std::error::Error>> {
         "mu", // mutation rate of loci
         "mut_size",
         "sigma0", // Locus determining prior alpha
-        "sigma_cue",
         "div_rate",
         "varsigma", // the maximum sample size an individual is able to gather from cues
         "h", // hawkishness slope
@@ -79,7 +78,9 @@ fn write_csv_header(path: &str) -> Result<(), Box<dyn std::error::Error>> {
         "rho",
         "nu",
         "gamma",
-        "lambda"
+        "lambda",
+        "fast",
+        "slow"
     ])?;
 
     wtr.flush()?;
@@ -109,7 +110,6 @@ fn write_csv_header2(path: &str) -> Result<(), Box<dyn std::error::Error>> {
         "mu", // mutation rate of loci
         "mut_size",
         "sigma0", // Locus determining prior alpha
-        "sigma_cue",
         "div_rate",
         "varsigma", // the maximum sample size an individual is able to gather from cues
         "h", // hawkishness slope
@@ -120,7 +120,9 @@ fn write_csv_header2(path: &str) -> Result<(), Box<dyn std::error::Error>> {
         "rho",
         "nu",
         "gamma",
-        "lambda"
+        "lambda",
+        "fast",
+        "slow"
     ])?;
 
     wtr.flush()?;
@@ -146,11 +148,11 @@ fn run_r_sim_script(path: String) -> io::Result<()> {
 
 fn init_pop(n: usize, agent: Agent, sigma0:f64) -> Vec<Agent> {
     // returns vector with new agents
-    let normal = Normal::new(0.0, sigma0).unwrap();
+    let beta = Beta::new(sigma0, sigma0).unwrap();
     let mut pop = Vec::new();
     for i in 0..n {
         pop.push(agent.clone());
-        pop[i].q = normal.sample(&mut thread_rng());
+        pop[i].q = beta.sample(&mut thread_rng());
         
     }
     return pop;
@@ -184,8 +186,8 @@ fn sigmoid(q:f64, m:f64) -> f64 {
 // Structs
 #[derive(Clone, Copy, Debug)]
 struct Agent {
-    sigma: f64,
-    pi: f64,
+    alpha: f64,
+    beta: f64,
     q: f64,
     fitness: f64,
     u:f64, // negotiated parental effort
@@ -204,6 +206,8 @@ struct Environment {
     singles: Vec<usize>,
     dead: Vec<usize>,
     mean_fitness:f32,
+    mean_fast:f64,
+    mean_slow:f64,
     tol:f64,
     b_f:f64, // Benefit of additive parental effort to fecundity
     b_p:f64, // Offspring survival benefit of parental effort
@@ -213,7 +217,6 @@ struct Environment {
     c_u:f64, // survival cost of parental effort in winter
     mu:f64, // mutation rate of loci
     sigma0: f64, // Prior sigma
-    sigma_cue:f64, // variation of social cue
     varsigma:i64, // the maximum sample size an individual is able to gather from cues
     theta:f64, // slope of mortality against q-value
     mut_size:f64, // standard deviation of mutations
@@ -339,41 +342,23 @@ impl Agent {
         return (self.c+ (self.m * (self.q))).min(1.0).max(0.0);
     }
 
-    fn social_cue(&mut self, partner_q:f64, sigma_cue:f64) {
-        let normal = Normal::new(partner_q, sigma_cue).unwrap();
-        let phen:f64;
-        let b = 1. / (sigma_cue * sigma_cue);
-
-        // println!("prior pi: {}, sig: {}, q: {}, sig_cue: {}", self.pi, self.sigma, partner_q, sigma_cue);
-        let a = 1. / (self.sigma * self.sigma);
-        phen = normal.sample(&mut thread_rng());
-        self.updating(a, b, phen);
-            // println!("n: {}, post pi: {}, sig: {}, phen: {}, q: {}, H(q): {}\n",i, self.pi, self.sigma, phen, partner_q, self.uncertainty());
-    }
-
-    fn updating(&mut self, a:f64, b:f64, x:f64) {
-        self.pi = (a * self.pi + b * x) / (a + b);
-        self.sigma = (1. / (a + b)).sqrt();
-    }
-
-    fn uncertainty(&self, sigma0:f64) -> f64 {
-        let hx = 0.5  * (2.0 * std::f64::consts::PI * std::f64::consts::E * self.sigma * self.sigma).log2();
-        return hx / (0.5 * (2.0 * std::f64::consts::PI * std::f64::consts::E * sigma0*sigma0).log2())
+    fn uncertainty(&self) -> f64 {
+        let var = (self.alpha*self.beta) / ((self.alpha+self.beta)*(self.alpha+self.beta)*(self.alpha+self.beta+1.));
+        return var
     }
 
     fn r(&self, u2:f64, h:f64) -> f64 {
         let r:f64
             = self.u_base
             + self.rho
-            + self.nu*sigmoid(self.q,1.)
-            // + self.gamma*(1.-h)*(sigmoid(self.pi,1.)-sigmoid(self.q,1.)) 
-            + self.gamma*(1.-h)*(sigmoid(self.pi,1.)) 
-            - self.lambda*(u2 - self.u_base);
+            + self.nu*(self.q - 0.5)
+            + self.gamma*4.*h*(self.q - self.alpha/(self.alpha+self.beta)) 
+            - self.lambda*(u2 - self.u_base).max(0.0);
         return r
     }
 
     fn surivorship(&self, b_s:f64, c_q:f64, c_v:f64, c_u:f64, theta:f64) -> f64 {
-        let s: f64 =  b_s*(1. - (1. / (1.+(-self.q * theta).exp())) * c_q)*(1. - self.pol_v() *c_v)*(1. - self.u * c_u); 
+        let s: f64 =  b_s*(1. - -self.q * c_q)*(1. - self.pol_v() *c_v)*(1. - (1.-(-self.u).exp()) * c_u); 
         return s
     }
 }
@@ -392,7 +377,11 @@ impl Environment {
             
             for _j in 0..self.varsigma {
                 if dice() < v_f {
-                    self.pop[female].social_cue(q_m, self.sigma_cue);
+                    if dice() < q_m {
+                        self.pop[female].alpha += 1.;
+                    } else {
+                        self.pop[female].beta += 1.;
+                    }
                 }
             }
         } 
@@ -412,7 +401,10 @@ impl Environment {
         let mut q1:f64;
         let mut q2:f64;
         let mut pred:f64;
-        let x:f64 = 1.0;
+        self.mean_fast = 0.;
+        self.mean_slow = 0.;
+        let mut fast: f64 = 0.;
+        let mut slow: f64 = 0.;
 
         for i in 0..self.pop.len(){
             female = i;
@@ -420,8 +412,8 @@ impl Environment {
             if male > female { // so that there aren't repeats
                 // let mut gen: f64 = 0.;
                 // dif = 9999.;
-                h1 = self.pop[male].uncertainty(self.sigma0);
-                h2 = self.pop[female].uncertainty(self.sigma0);
+                h1 = self.pop[male].uncertainty();
+                h2 = self.pop[female].uncertainty();
                 u1=0.;
                 u2=0.;
                 // old=u1+u2;
@@ -436,33 +428,38 @@ impl Environment {
                     // old = u1 + u2;
                     // println!("gen: {}, dif: {}, old: {}, u1: {}, u2: {}", gen, dif, old, u1, u2)
                 }
-                
-                // println!("u1: {}, u2: {}", u1, u2);
 
-                // u1 = (u1.clamp(-x, x)+x)/(x*2.);
-                // u2 = (u2.clamp(-x, x)+x)/(x*2.);
-                
-                // u1 = u1.clamp(0., 10.);
-                // u2 = u2.clamp(0., 10.);
-                // println!("u1: {}, u2: {}", u1, u2);
-                u1 = sigmoid(u1, 1.);
-                u2 = sigmoid(u2, 1.);
-
-                ben = self.b_f + 1.*(u1.max(0.0) + u2.max(0.0));
+                ben = 1.-(-self.b_f*(u1 + u2)).exp();
                 self.pop[male].u = u1;
                 self.pop[female].u = u2;
                 q1 = self.pop[male].q;
                 q2 = self.pop[female].q;
+                if q1 > 0.5  {
+                    self.mean_fast += u1;
+                    fast += 1.;
+                } else {
+                    self.mean_slow += u1;
+                    slow += 1.;
+                }
+                if q2 > 0.5  {
+                    self.mean_fast += u2;
+                    fast += 1.;
+                } else {
+                    self.mean_slow += u2;
+                    slow += 1.;
+                }
                 pred = self.predation(u1, u2, q1, q2);
                 
                 self.pop[male].fitness = (ben * (1.-pred) / 2.).max(0.0);
                 self.pop[female].fitness = (ben * (1.-pred) / 2.).max(0.0);
             }
         }
+        self.mean_fast = self.mean_fast / fast;
+        self.mean_slow = self.mean_slow / slow;
     }
 
     fn predation(&mut self, u1:f64,u2:f64,q1:f64,q2:f64) -> f64 {
-        return self.b_p * (1.- (1./(1.+(-self.h*(1.-u1)*q1).exp())) * (1./(1.+(-self.h*(1.-u2)*q2).exp()))).min(1.0)
+        return self.b_p * (-self.h*((1.-u1)*q1 + (1.-u2)*q2).exp())
     }
 
     fn kills(&mut self, i: usize) {
@@ -533,12 +530,12 @@ impl Environment {
         for chunk in available.chunks(2) {
             if let [a, b] = chunk {
                 // initialize states
-                self.pop[*a].sigma = self.sigma0;
-                self.pop[*a].pi = 0.0;
+                self.pop[*a].alpha = self.sigma0;
+                self.pop[*a].beta = self.sigma0;
                 self.pop[*a].partner = Some(*b);
 
-                self.pop[*b].sigma = self.sigma0;
-                self.pop[*b].pi = 0.0;
+                self.pop[*b].alpha = self.sigma0;
+                self.pop[*b].beta = self.sigma0;
                 self.pop[*b].partner = Some(*a);
             }
         }
@@ -548,7 +545,8 @@ impl Environment {
         let mut selected_male:usize;
         let mut selected_female:usize;
         let blend:f64 = 0.5;
-        let normal = Normal::new(0.0, self.sigma0).unwrap();
+        
+        let beta = Beta::new(self.sigma0, self.sigma0).unwrap();
         // for each i in dead, replace strategy with that of a living individual (single or paired) biased by their fitness from either environment
 
         // weighted agent indices by fitness (dead or alive)
@@ -586,7 +584,7 @@ impl Environment {
             self.pop[self.dead[i]].lambda = blend*self.pop[selected_male].lambda + (1.-blend)*self.pop[selected_female].lambda;
             self.pop[self.dead[i]].gamma = blend*self.pop[selected_male].gamma + (1.-blend)*self.pop[selected_female].gamma;
             self.pop[self.dead[i]].fitness = 0.;
-            self.pop[self.dead[i]].q = normal.sample(&mut thread_rng());
+            self.pop[self.dead[i]].q = beta.sample(&mut thread_rng());
 
             // apply mutations to policies
             self.pop[self.dead[i]].mutate(self.mu, self.mut_size);   
@@ -596,14 +594,14 @@ impl Environment {
     }
 
     fn csvgen(&mut self, pop_len:f64, i:f64) -> Vec<f64> {
-        let mut data = Vec::new();
-        let mut mean_loc_m = 0.;
-        let mut mean_loc_c = 0.;
-        let mut mean_loc_u_base = 0.;
-        let mut mean_loc_rho = 0.;
-        let mut mean_loc_nu = 0.;
-        let mut mean_loc_gamma = 0.;
-        let mut mean_loc_lambda = 0.;
+        let mut data: Vec<f64> = Vec::new();
+        let mut mean_loc_m: f64 = 0.;
+        let mut mean_loc_c: f64 = 0.;
+        let mut mean_loc_u_base: f64 = 0.;
+        let mut mean_loc_rho: f64 = 0.;
+        let mut mean_loc_nu: f64 = 0.;
+        let mut mean_loc_gamma: f64 = 0.;
+        let mut mean_loc_lambda: f64 = 0.;
         // println!("Generation: {}, Mean_fitness: {:.4}, prior_wet: {:.4}, prior_general: {:.4}, prior_dry: {:.4}, prop_obs: {:.4}", 
             // i, env.mean_fitness, env.prop_obs);
         for a in &self.pop {
@@ -634,7 +632,6 @@ impl Environment {
         data.push(self.mu); // mutation rate of loci
         data.push(self.mut_size);
         data.push(self.sigma0); // Locus determining prior alpha
-        data.push(self.sigma_cue);
         data.push(self.div_rate);
         data.push(self.varsigma as f64); // the maximum sample size an individual is able to gather from cues
         data.push(self.h);
@@ -646,6 +643,8 @@ impl Environment {
         data.push(mean_loc_nu);
         data.push(mean_loc_gamma);
         data.push(mean_loc_lambda);
+        data.push(self.mean_fast);
+        data.push(self.mean_slow);
         return data
     }
 
@@ -701,8 +700,8 @@ fn main() -> std::io::Result<()>  {
         let pop_size = 1000;
 
         let agent:Agent = Agent {
-            sigma: sigma0,
-            pi: 0.,
+            alpha: sigma0,
+            beta: sigma0,
             q: 0.5,
             fitness: 0.,
             u:0., 
@@ -721,9 +720,11 @@ fn main() -> std::io::Result<()>  {
             singles: (0..pop_size as usize).collect(),
             dead: Vec::new(),
             mean_fitness:0.,
+            mean_fast:0.,
+            mean_slow:0.,
             tol: 0.001,
             mu:0.2, // mutation rate of loci
-            mut_size:0.2,
+            mut_size:0.1,
 
             b_f:1.0, // Baseline fecundity (offspring independence)
             b_s:0.99, // Baseline survival rate of adults (5 years lifespan)
@@ -732,7 +733,6 @@ fn main() -> std::io::Result<()>  {
             c_v:0.1, // surival cost of making observations in winter
             c_u:0.25, // survival cost of parental effort in winter (highest energy expenditure)
             sigma0, // Locus determining prior alpha
-            sigma_cue:4.0, // sd of the cue
             varsigma:10, // the maximum sample size an individual is able to gather from cues
             h:5., // slow-fast slope of nest-defence/size/aggression (behavioural phenotypes more extreme therefore h>theta)
             theta: 2.0, // slow-fast sigmoid slope of mortality risk against q-value (physiological
@@ -744,7 +744,7 @@ fn main() -> std::io::Result<()>  {
     r.exec("source('src/b_s.r')")?;
     let r_mutex = Mutex::new(r);
 
-////////////////////////////////////////////////////// hawkishness of fast individuals
+////////////////////////////////////////////////////// Availability of social cues
         // Construct the full path
         let path = format!("./Results/{}/h/", project_id);
         let path_construct = Path::new(&path);
@@ -758,10 +758,10 @@ fn main() -> std::io::Result<()>  {
         let mut agent = agent.clone();
         agent.mutate(1.0, 1.0); // randomize resident loci
         env.pop = init_pop(pop_size, agent, sigma0);
-        let x = rng.gen_range(0.0..10.0); // uniform sample from parameter space
-        env.h = x;
+        let x = rng.gen_range(1..100); // uniform sample from parameter space
+        env.varsigma = x;
         
-        println!("Simulation started: h: {}, trial: {}", x, g);
+        println!("Simulation started: varsigma: {}, trial: {}", x, g);
         run(
             generations, 
             &path, 
@@ -769,52 +769,16 @@ fn main() -> std::io::Result<()>  {
             Some(&g),
             env
         );
-        println!("Simulation done: h: {}, trial: {}", x, g);
+        println!("Simulation done: varsigma: {}, trial: {}", x, g);
 
         // ensure only one thread runs r at a time (plotting):
         if g % 10 == 0 {
             let mut r_guard = r_mutex.lock().unwrap(); 
-            r_guard.exec(&format!("run_h_plot('{}')", path)).unwrap();
+            r_guard.exec(&format!("run_varsigma_plot('{}')", path)).unwrap();
         }
     });
     let mut r = RSession::new()?;
-    r.exec(&format!("run_h_plot('{}')", path)).unwrap();
-
-////////////////////////////////////////////////////// Adult mortality rate (b_s) simulations
-        // Construct the full path
-        let path = format!("./Results/{}/b_s/", project_id);
-        let path_construct = Path::new(&path);
-        // Ensure parent directory exists
-        let _ = fs::create_dir_all(path_construct); // Create directory path if it doesn't exist
-        let _ = write_csv_header(&path);
-    (0..iterations).into_par_iter().for_each(|g|  {
-        // Initialise stochastic variables
-        let mut rng = rand::thread_rng();
-        let mut env = env.clone();
-        let mut agent = agent.clone();
-        agent.mutate(1.0, 1.0); // randomize resident loci
-        env.pop = init_pop(pop_size, agent, sigma0);
-        let x = rng.gen_range(0.0..1.0); // uniform sample from parameter space
-        env.b_s = x;
-        
-        println!("Simulation started: mort: {}, trial: {}", x, g);
-        run(
-            generations, 
-            &path, 
-            Some(&(x.to_string())), 
-            Some(&g),
-            env
-        );
-        println!("Simulation done: mort: {}, trial: {}", x, g);
-
-        // ensure only one thread runs r at a time (plotting):
-        if g % 10 == 0 {
-            let mut r_guard = r_mutex.lock().unwrap(); 
-            r_guard.exec(&format!("run_b_s_plot('{}')", path)).unwrap();
-        }
-    });
-    let mut r = RSession::new()?;
-    r.exec(&format!("run_b_s_plot('{}')", path)).unwrap();
+    r.exec(&format!("run_varsigma_plot('{}')", path)).unwrap();
 
 ////////////////////////////////////////////////////// Cue cost sims
         // Construct the full path
@@ -851,42 +815,6 @@ fn main() -> std::io::Result<()>  {
     });
     let mut r = RSession::new()?;
     r.exec(&format!("run_cuecost_plot('{}')", path)).unwrap();
-
-////////////////////////////////////////////////////// Cue detectability (cue_sigma) sims
-    // Construct the full path
-    let path = format!("./Results/{}/sigma_cue/", project_id);
-    let path_construct = Path::new(&path);
-     // Ensure parent directory exists
-    let _ = fs::create_dir_all(path_construct); // Create directory path if it doesn't exist
-    let _ = write_csv_header(&path);
-    (0..iterations).into_par_iter().for_each(|g|  {
-        // Initialise stochastic variables
-        let mut rng = rand::thread_rng();
-        let mut env = env.clone();
-        let mut agent = agent.clone();
-        agent.mutate(1.0, 1.0); // randomize resident loci
-        env.pop = init_pop(pop_size, agent, sigma0);
-        let x = rng.gen_range(0.001..10.0); // uniform sample from parameter space
-        env.sigma_cue = x;
-        
-        println!("Simulation started: sigmacue: {}, trial: {}", x, g);
-        run(
-            generations, 
-            &path, 
-            Some(&(x.to_string())), 
-            Some(&g),
-            env
-        );
-        println!("Simulation done: sigmacue: {}, trial: {}", x, g);
-
-        // ensure only one thread runs r at a time (plotting):
-        if g % 10 == 0 {
-            let mut r_guard = r_mutex.lock().unwrap(); 
-            r_guard.exec(&format!("run_sigmacue_plot('{}')", path)).unwrap();
-        }
-    });
-    let mut r = RSession::new()?;
-    r.exec(&format!("run_sigmacue_plot('{}')", path)).unwrap();
 
 ////////////////////////////////////////////////////// Offspring independence (b_f) simulations
     // Construct the full path
@@ -996,7 +924,80 @@ fn main() -> std::io::Result<()>  {
     let mut r = RSession::new()?;
     r.exec(&format!("run_sigma_plot('{}')", path)).unwrap();
 
-////////////////////////////////////////////////////// Divorce rate: 
+
+////////////////////////////////////////////////////// hawkishness of fast individuals
+        // Construct the full path
+        let path = format!("./Results/{}/h/", project_id);
+        let path_construct = Path::new(&path);
+        // Ensure parent directory exists
+        let _ = fs::create_dir_all(path_construct); // Create directory path if it doesn't exist
+        let _ = write_csv_header(&path);
+    (0..iterations).into_par_iter().for_each(|g|  {
+        // Initialise stochastic variables
+        let mut rng = rand::thread_rng();
+        let mut env = env.clone();
+        let mut agent = agent.clone();
+        agent.mutate(1.0, 1.0); // randomize resident loci
+        env.pop = init_pop(pop_size, agent, sigma0);
+        let x = rng.gen_range(0.0..10.0); // uniform sample from parameter space
+        env.h = x;
+        
+        println!("Simulation started: h: {}, trial: {}", x, g);
+        run(
+            generations, 
+            &path, 
+            Some(&(x.to_string())), 
+            Some(&g),
+            env
+        );
+        println!("Simulation done: h: {}, trial: {}", x, g);
+
+        // ensure only one thread runs r at a time (plotting):
+        if g % 10 == 0 {
+            let mut r_guard = r_mutex.lock().unwrap(); 
+            r_guard.exec(&format!("run_h_plot('{}')", path)).unwrap();
+        }
+    });
+    let mut r = RSession::new()?;
+    r.exec(&format!("run_h_plot('{}')", path)).unwrap();
+
+////////////////////////////////////////////////////// Adult mortality rate (b_s) simulations
+        // Construct the full path
+        let path = format!("./Results/{}/b_s/", project_id);
+        let path_construct = Path::new(&path);
+        // Ensure parent directory exists
+        let _ = fs::create_dir_all(path_construct); // Create directory path if it doesn't exist
+        let _ = write_csv_header(&path);
+    (0..iterations).into_par_iter().for_each(|g|  {
+        // Initialise stochastic variables
+        let mut rng = rand::thread_rng();
+        let mut env = env.clone();
+        let mut agent = agent.clone();
+        agent.mutate(1.0, 1.0); // randomize resident loci
+        env.pop = init_pop(pop_size, agent, sigma0);
+        let x = rng.gen_range(0.0..1.0); // uniform sample from parameter space
+        env.b_s = x;
+        
+        println!("Simulation started: mort: {}, trial: {}", x, g);
+        run(
+            generations, 
+            &path, 
+            Some(&(x.to_string())), 
+            Some(&g),
+            env
+        );
+        println!("Simulation done: mort: {}, trial: {}", x, g);
+
+        // ensure only one thread runs r at a time (plotting):
+        if g % 10 == 0 {
+            let mut r_guard = r_mutex.lock().unwrap(); 
+            r_guard.exec(&format!("run_b_s_plot('{}')", path)).unwrap();
+        }
+    });
+    let mut r = RSession::new()?;
+    r.exec(&format!("run_b_s_plot('{}')", path)).unwrap();
+
+    ////////////////////////////////////////////////////// Divorce rate: 
     // Construct the full path
     let path = format!("./Results/{}/divorce/", project_id);
     let path_construct = Path::new(&path);

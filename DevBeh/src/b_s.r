@@ -34,7 +34,7 @@ run_b_f_plot <- function(path) {
       panel.grid.minor = element_line(colour = "grey90", size = 0.2)
     ) +
     coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) +
-    scale_color_viridis_d(option = "turbo")  # different color set
+    scale_color_viridis_d(option = "tokyo")  # different color set
 
   # Open PDF
   pdf(paste0(path, "../b_f.pdf"), width = 8, height = 6)
@@ -70,7 +70,7 @@ run_h_plot <- function(path) {
     ) +
     xlab("Hawkishness of fast pace-of-life individuals (h)") +
     coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) +
-    scale_color_viridis_d(option = "turbo")  # different color set
+    scale_color_viridis_d(option = "tokyo")  # different color set
     
   
   pdf(paste0(path, "../h.pdf"), width = 8, height = 6)
@@ -106,13 +106,49 @@ run_sigma_plot <- function(path) {
     ) +
     xlab("Standard deviation of pace-of-life phenotype (sigma)") +
     coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) +
-    scale_color_viridis_d(option = "turbo")  # different color set
+    scale_color_viridis_d(option = "tokyo")  # different color set
     
   
   pdf(paste0(path, "../sigma0.pdf"), width = 8, height = 6)
   print(p1)
   dev.off()
 }
+
+run_varsigma_plot <- function(path) {
+
+  # Read CSV
+  readfile <- read.csv(paste0(path, "summaries.csv"))
+
+  # Prepare datasets
+  df_long1 <- readfile %>%
+    select(varsigma, u_base, rho, nu,
+           gamma, lambda, c, m, fast, slow) %>%
+    gather(`Loci`, `Trait value`, -varsigma)
+
+  # Determine shared x-axis limits
+  x_limits <- c(0,100)
+
+  # First plot
+  p1 <- ggplot(df_long1, aes(x = varsigma, y = `Trait value`,
+                             color = `Loci`,
+                             group = `Loci`)) +
+    geom_point(alpha = 0.3, size = 1) +
+    geom_smooth(method = "loess", se = TRUE, alpha = 0.1) +
+    theme_classic(base_size = 12) +
+    theme(
+      panel.grid.major = element_line(colour = "grey80", size = 0.3),
+      panel.grid.minor = element_line(colour = "grey90", size = 0.2)
+    ) +
+    xlab("Availability of social cues (n)") +
+    coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) +
+    scale_fill_brewer(palette = "Set2")  # different color set
+    
+  
+  pdf(paste0(path, "../varsigma.pdf"), width = 8, height = 6)
+  print(p1)
+  dev.off()
+}
+
 
 run_sigmacue_plot <- function(path) {
 
@@ -135,10 +171,9 @@ run_sigmacue_plot <- function(path) {
   # First plot
   p1 <- ggplot(df_long1, aes(x = sigma_cue, y = Value,
                              color = `Loci`,
-                             group = `Loci`,
-                             fill = `Loci`)) +
+                             group = `Loci`)) +
     geom_point(alpha = 0.3, size = 1) +
-    geom_smooth(method = "loess", se = TRUE, alpha = 0.3) +
+    geom_smooth(method = "loess", se = TRUE, alpha = 0.1) +
     theme_classic(base_size = 12) +
     theme(
       panel.grid.major = element_line(colour = "grey80", size = 0.3),
@@ -146,7 +181,7 @@ run_sigmacue_plot <- function(path) {
     ) +
     xlab("Standard deviation of social cue") +
     coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) +
-    scale_color_viridis_d(option = "turbo")  # different color set
+    scale_color_viridis_d()  # different color set
 
   # Second plot
   # p2 <- ggplot(df_long2, aes(x = sigma_cue, y = Value,
@@ -191,7 +226,7 @@ run_cuecost_plot <- function(path) {
     ) +
     xlab("Cost of social cue (c_v)") +
     coord_cartesian(xlim = c(0, 1), ylim = c(-1, 1)) +
-    scale_color_viridis_d(option = "turbo")  # different color set
+    scale_color_viridis_d(option = "tokyo")  # different color set
 
   # Open PDF
   pdf(paste0(path, "../cue_cost.pdf"), width = 8, height = 6)
@@ -231,7 +266,7 @@ run_b_s_plot <- function(path) {
     ) +
     xlab("Baseline survival rate (b_s)") +
     coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) +
-    scale_color_viridis_d(option = "turbo")  # different color set
+    scale_color_viridis_d(option = "tokyo")  # different color set
 
 
   # Open PDF
@@ -269,7 +304,7 @@ run_b_p_plot <- function(path) {
     ) +
     xlab("Brood predation risk (b_p)") +
     coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) +
-    scale_color_viridis_d(option = "turbo")  # different color set
+    scale_color_viridis_d(option = "tokyo")  # different color set
 
 
   # Open PDF
@@ -307,7 +342,7 @@ run_divorce_plot <- function(path) {
     theme_classic(base_size = 12) +
     xlab("Divorce rate") +
     coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) +
-    scale_color_viridis_d(option = "turbo")  # different color set
+    scale_color_viridis_d(option = "tokyo")  # different color set
 
 
   # Open PDF
