@@ -177,8 +177,8 @@ fn dice() -> f64 {
     return dice
 }
 
-fn sigmoid(q:f64, m:f64) -> f64 {
-    return 1. / (1. + (-q * m).exp())
+fn sigmoid(q:f64) -> f64 {
+    return 1. / (1. + (q).exp())
 }
 
 // Structs
@@ -365,9 +365,8 @@ impl Agent {
         let r:f64
             = self.u_base
             + self.rho
-            + self.nu*sigmoid(self.q,1.)
-            // + self.gamma*(1.-h)*(sigmoid(self.pi,1.)-sigmoid(self.q,1.)) 
-            + self.gamma*(1.-h)*(sigmoid(self.pi,1.)) 
+            + self.nu*sigmoid(-self.q)
+            + self.gamma*(sigmoid(-self.q) - sigmoid(-self.pi)) 
             - self.lambda*(u2 - self.u_base);
         return r
     }
@@ -445,8 +444,8 @@ impl Environment {
                 // u1 = u1.clamp(0., 10.);
                 // u2 = u2.clamp(0., 10.);
                 // println!("u1: {}, u2: {}", u1, u2);
-                u1 = sigmoid(u1, 1.);
-                u2 = sigmoid(u2, 1.);
+                u1 = sigmoid(-u1);
+                u2 = sigmoid(-u2);
 
                 ben = self.b_f + 1.*(u1.max(0.0) + u2.max(0.0));
                 self.pop[male].u = u1;
@@ -462,7 +461,7 @@ impl Environment {
     }
 
     fn predation(&mut self, u1:f64,u2:f64,q1:f64,q2:f64) -> f64 {
-        return self.b_p * (1.- (1./(1.+(-self.h*(1.-u1)*q1).exp())) * (1./(1.+(-self.h*(1.-u2)*q2).exp()))).min(1.0)
+        return self.b_p * sigmoid(-q1*self.h*(1.-u1)-q2*self.h*(1.-u2)) 
     }
 
     fn kills(&mut self, i: usize) {
@@ -695,7 +694,7 @@ fn main() -> std::io::Result<()>  {
         let project_id = &args[1];
 
 /////////////////////////////////////////// Initialise baseline parameters \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
-        let generations: i32 = 50000; // number of generations the sim lasts
+        let generations: i32 = 20000; // number of generations the sim lasts
         let sigma0:f64 = 10.0;
         let iterations:i32 = 200;
         let pop_size = 1000;
