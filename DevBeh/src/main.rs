@@ -68,6 +68,7 @@ fn write_csv_header(path: &str) -> Result<(), Box<dyn std::error::Error>> {
         "mu", // mutation rate of loci
         "mut_size",
         "sigma0", // Locus determining prior alpha
+        "mu_q",
         "sigma_cue",
         "div_rate",
         "varsigma", // the maximum sample size an individual is able to gather from cues
@@ -110,6 +111,7 @@ fn write_csv_header2(path: &str) -> Result<(), Box<dyn std::error::Error>> {
         "mut_size",
         "sigma0", // Locus determining prior alpha
         "sigma_cue",
+        "mu_q",
         "div_rate",
         "varsigma", // the maximum sample size an individual is able to gather from cues
         "h", // hawkishness slope
@@ -213,6 +215,7 @@ struct Environment {
     c_u:f64, // survival cost of parental effort in winter
     mu:f64, // mutation rate of loci
     sigma0: f64, // Prior sigma
+    mu_q:f64, // prior pi
     sigma_cue:f64, // variation of social cue
     varsigma:i64, // the maximum sample size an individual is able to gather from cues
     theta:f64, // slope of mortality against q-value
@@ -278,8 +281,8 @@ impl Agent {
             // parental effort selfishness bias
             let n = nm::new(self.rho, mut_size as f64).unwrap(); // generates normal distribution 
             let loc_mut = n.sample(&mut rng);
-            if loc_mut < -1. {
-                self.rho = -1.;
+            if loc_mut < 0. {
+                self.rho = 0.;
             } else if loc_mut > 1.{
                 self.rho = 1.;
             } else {
@@ -293,13 +296,7 @@ impl Agent {
             // pace-of-life influence effort baseline
             let n = nm::new(self.nu, mut_size as f64).unwrap(); // generates normal distribution 
             let loc_mut = n.sample(&mut rng);
-            if loc_mut < -1. {
-                self.nu = -1.;
-            } else if loc_mut > 1.{
-                self.nu = 1.;
-            } else {
-                self.nu = loc_mut;
-            }
+            self.nu = loc_mut;
         }
 
         
@@ -309,13 +306,7 @@ impl Agent {
             // scales the perceived informativeness of partner gathering outcomes.
             let n = nm::new(self.lambda, mut_size as f64).unwrap(); // generates normal distribution 
             let loc_mut = n.sample(&mut rng);
-            if loc_mut < -1.0 {
-                self.lambda = -1.0;
-            } else if loc_mut > 1.0 {
-                self.lambda = 1.0;
-            } else {
-                self.lambda = loc_mut;
-            }
+            self.lambda = loc_mut;
         }
         
         dice = rng.gen(); //gamma
@@ -324,19 +315,13 @@ impl Agent {
             // scales the perceived informativeness of partner gathering outcomes.
             let n = nm::new(self.gamma, mut_size as f64).unwrap(); // generates normal distribution 
             let loc_mut = n.sample(&mut rng);
-            if loc_mut < -1.0 {
-                self.gamma = -1.0;
-            } else if loc_mut > 1.0 {
-                self.gamma = 1.0;
-            } else {
-                self.gamma = loc_mut;
-            }
+            self.gamma = loc_mut;
         }
     }
 
     fn pol_v(&self) -> f64 {
         // return self.c2*(1. - self.c) + self.c / (1. + (self.m * (self.q) ).exp());
-        return (self.c+ (self.m * (self.q))).min(1.0).max(0.0);
+        return self.m * self.q + self.c;
     }
 
     fn social_cue(&mut self, partner_q:f64, sigma_cue:f64) {
@@ -364,36 +349,21 @@ impl Agent {
     fn r(&self, u2:f64, h:f64) -> f64 {
         let r:f64
             = self.rho
-            + self.nu*sigmoid(-self.q)
-            + self.gamma*(sigmoid(-self.q) - sigmoid(-self.pi)) 
-            - self.lambda*(sigmoid(-u2) - self.u_base);
-        return r
+            + self.nu*self.q
+            + self.gamma*(self.q - self.pi) 
+            - self.lambda*(u2 - self.u_base);
+        return r.clamp(0., 1.)
     }
 
     fn surivorship(&self, b_s:f64, c_q:f64, c_v:f64, c_u:f64, theta:f64) -> f64 {
-        let s: f64 =  b_s*(1. - sigmoid(-self.q * theta) * c_q)*(1. - self.pol_v() *c_v)*(1. - self.u * c_u); 
+        let s: f64 =  b_s*(1. - self.q * c_q)*(1. - self.pol_v() *c_v)*(1. - self.u * c_u); 
         return s
     }
 }
 
-impl Environment { 
-    
-    fn observations(&mut self) {
-        let mut v_f: f64;
-        let mut q_m: f64;
-        for i in 0..self.pop.len(){
-            let female = i;
-            let male = self.pop[i].partner.unwrap();
-            v_f = self.pop[female].pol_v();
-
-            q_m = self.pop[male].q;
-            
-            for _j in 0..self.varsigma {
-                if dice() < v_f {
-                    self.pop[female].social_cue(q_m, self.sigma_cue);
-                }
-            }
-        } 
+impl Environment {
+    fn predation(&mut self, u1:f64,u2:f64,q1:f64,q2:f64) -> f64 {
+        return self.b_p * (1. - q1*(1.-u1)) * (1. - q2*(1.-u2))
     }
 
     fn negotiations(&mut self) {  
@@ -410,7 +380,6 @@ impl Environment {
         let mut q1:f64;
         let mut q2:f64;
         let mut pred:f64;
-        let x:f64 = 1.0;
 
         for i in 0..self.pop.len(){
             female = i;
@@ -430,23 +399,9 @@ impl Environment {
                     // gen+=1.;
                     u1 = self.pop[male].r(u2,h1);
                     u2 = self.pop[female].r(u1,h2);
-                    // dif = (u1 + u2)-old;
-                    // old = u1 + u2;
-                    // println!("gen: {}, dif: {}, old: {}, u1: {}, u2: {}", gen, dif, old, u1, u2)
                 }
-                
-                // println!("u1: {}, u2: {}", u1, u2);
 
-                // u1 = (u1.clamp(-x, x)+x)/(x*2.);
-                // u2 = (u2.clamp(-x, x)+x)/(x*2.);
-                
-                // u1 = u1.clamp(0., 10.);
-                // u2 = u2.clamp(0., 10.);
-                // println!("u1: {}, u2: {}", u1, u2);
-                u1 = sigmoid(-u1);
-                u2 = sigmoid(-u2);
-
-                ben = self.b_f + 1.*(u1.max(0.0) + u2.max(0.0));
+                ben = self.b_f + u1 + u2;
                 self.pop[male].u = u1;
                 self.pop[female].u = u2;
                 q1 = self.pop[male].q;
@@ -458,9 +413,37 @@ impl Environment {
             }
         }
     }
+    
+    fn observations(&mut self) {
+        let mut v_f: f64;
+        let mut q_m: f64;
+        let mut n: f64;
+        let mut xbar:f64;
+        for i in 0..self.pop.len(){
+            n=0.;
+            let female = i;
+            let male = self.pop[i].partner.unwrap();
+            v_f = self.pop[female].pol_v();
+            q_m = self.pop[male].q;
+            let normal = Normal::new(q_m, self.sigma_cue).unwrap();
+            xbar = 0.;
+            
+            // Number of observations made
+            for _j in 0..self.varsigma {
+                if dice() < v_f {
+                    n += 1.;
+                    
+                    xbar += normal.sample(&mut thread_rng());
+                }
+            }
 
-    fn predation(&mut self, u1:f64,u2:f64,q1:f64,q2:f64) -> f64 {
-        return self.b_p * sigmoid(-q1*self.h*(1.-u1)-q2*self.h*(1.-u2)) 
+            // observation mean xbar
+            xbar = xbar / n;
+
+            // Bayesian updating
+            self.pop[female].sigma = (1./self.sigma0.powf(2.) + n/self.sigma_cue.powf(2.)).powf(-1.).powf(1./2.);
+            self.pop[female].pi = self.pop[female].sigma * (self.mu_q/self.sigma0.powf(2.) + (n*xbar)/self.sigma_cue.powf(2.));
+        } 
     }
 
     fn kills(&mut self, i: usize) {
@@ -532,11 +515,11 @@ impl Environment {
             if let [a, b] = chunk {
                 // initialize states
                 self.pop[*a].sigma = self.sigma0;
-                self.pop[*a].pi = 0.0;
+                self.pop[*a].pi = self.mu_q;
                 self.pop[*a].partner = Some(*b);
 
                 self.pop[*b].sigma = self.sigma0;
-                self.pop[*b].pi = 0.0;
+                self.pop[*b].pi = self.mu_q;
                 self.pop[*b].partner = Some(*a);
             }
         }
@@ -632,6 +615,7 @@ impl Environment {
         data.push(self.mu); // mutation rate of loci
         data.push(self.mut_size);
         data.push(self.sigma0); // Locus determining prior alpha
+        data.push(self.mu_q);
         data.push(self.sigma_cue);
         data.push(self.div_rate);
         data.push(self.varsigma as f64); // the maximum sample size an individual is able to gather from cues
@@ -694,13 +678,13 @@ fn main() -> std::io::Result<()>  {
 
 /////////////////////////////////////////// Initialise baseline parameters \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
         let generations: i32 = 20000; // number of generations the sim lasts
-        let sigma0:f64 = 10.0;
+        let sigma0:f64 = 1./20.;
         let iterations:i32 = 200;
         let pop_size = 1000;
 
         let agent:Agent = Agent {
             sigma: sigma0,
-            pi: 0.,
+            pi: 100.,
             q: 0.5,
             fitness: 0.,
             u:0., 
@@ -730,6 +714,7 @@ fn main() -> std::io::Result<()>  {
             c_v:0.1, // surival cost of making observations in winter
             c_u:0.25, // survival cost of parental effort in winter (highest energy expenditure)
             sigma0, // Locus determining prior alpha
+            mu_q:0.5,
             sigma_cue:4.0, // sd of the cue
             varsigma:10, // the maximum sample size an individual is able to gather from cues
             h:5., // slow-fast slope of nest-defence/size/aggression (behavioural phenotypes more extreme therefore h>theta)
@@ -921,42 +906,6 @@ fn main() -> std::io::Result<()>  {
     });
     let mut r = RSession::new()?;
     r.exec(&format!("run_b_p_plot('{}')", path)).unwrap();
-
-////////////////////////////////////////////////////// Pace-of-life variance (sigma) sims
-        // Construct the full path
-        let path = format!("./Results/{}/sigma/", project_id);
-        let path_construct = Path::new(&path);
-        // Ensure parent directory exists
-        let _ = fs::create_dir_all(path_construct); // Create directory path if it doesn't exist
-        let _ = write_csv_header(&path);
-    (0..iterations).into_par_iter().for_each(|g|  {
-        // Initialise stochastic variables
-        let mut rng = rand::thread_rng();
-        let mut env = env.clone();
-        let mut agent = agent.clone();
-        agent.mutate(1.0, 1.0); // randomize resident loci
-        env.pop = init_pop(pop_size, agent, sigma0);
-        let x = rng.gen_range(0.01..10.0); // uniform sample from parameter space
-        env.sigma0 = x;
-        
-        println!("Simulation started: sigma: {}, trial: {}", x, g);
-        run(
-            generations, 
-            &path, 
-            Some(&(x.to_string())), 
-            Some(&g),
-            env
-        );
-        println!("Simulation done: sigma: {}, trial: {}", x, g);
-
-        // ensure only one thread runs r at a time (plotting):
-        if g % 10 == 0 {
-            let mut r_guard = r_mutex.lock().unwrap(); 
-            r_guard.exec(&format!("run_sigma_plot('{}')", path)).unwrap();
-        }
-    });
-    let mut r = RSession::new()?;
-    r.exec(&format!("run_sigma_plot('{}')", path)).unwrap();
 
 ////////////////////////////////////////////////////// hawkishness of fast individuals
         // Construct the full path
