@@ -33,8 +33,7 @@ run_b_f_plot <- function(path) {
       panel.grid.major = element_line(colour = "grey80", size = 0.3),
       panel.grid.minor = element_line(colour = "grey90", size = 0.2)
     ) +
-    coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) +
-    scale_color_viridis_d(option = "turbo")  # different color set
+    coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) 
 
   # Open PDF
   pdf(paste0(path, "../b_f.pdf"), width = 8, height = 6)
@@ -69,8 +68,7 @@ run_h_plot <- function(path) {
       panel.grid.minor = element_line(colour = "grey90", size = 0.2)
     ) +
     xlab("Hawkishness of fast pace-of-life individuals (h)") +
-    coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) +
-    scale_color_viridis_d(option = "turbo")  # different color set
+    coord_cartesian(xlim = x_limits, ylim = c(-1, 1))
     
   
   pdf(paste0(path, "../h.pdf"), width = 8, height = 6)
@@ -105,8 +103,7 @@ run_sigma_plot <- function(path) {
       panel.grid.minor = element_line(colour = "grey90", size = 0.2)
     ) +
     xlab("Standard deviation of pace-of-life phenotype (sigma)") +
-    coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) +
-    scale_color_viridis_d(option = "turbo")  # different color set
+    coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) 
     
   
   pdf(paste0(path, "../sigma0.pdf"), width = 8, height = 6)
@@ -145,8 +142,7 @@ run_sigmacue_plot <- function(path) {
       panel.grid.minor = element_line(colour = "grey90", size = 0.2)
     ) +
     xlab("Standard deviation of social cue") +
-    coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) +
-    scale_color_viridis_d(option = "turbo")  # different color set
+    coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) 
 
   # Second plot
   # p2 <- ggplot(df_long2, aes(x = sigma_cue, y = Value,
@@ -190,8 +186,7 @@ run_cuecost_plot <- function(path) {
       panel.grid.minor = element_line(colour = "grey90", size = 0.2)
     ) +
     xlab("Cost of social cue (c_v)") +
-    coord_cartesian(xlim = c(0, 1), ylim = c(-1, 1)) +
-    scale_color_viridis_d(option = "turbo")  # different color set
+    coord_cartesian(xlim = c(0, 1), ylim = c(-1, 1)) 
 
   # Open PDF
   pdf(paste0(path, "../cue_cost.pdf"), width = 8, height = 6)
@@ -229,9 +224,8 @@ run_b_s_plot <- function(path) {
       panel.grid.major = element_line(colour = "grey80", size = 0.3),
       panel.grid.minor = element_line(colour = "grey90", size = 0.2)
     ) +
-    xlab("Baseline survival rate (b_s)") +
-    coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) +
-    scale_color_viridis_d(option = "turbo")  # different color set
+    xlab("Baseline survival rate (b_s)") 
+    # coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) 
 
 
   # Open PDF
@@ -268,8 +262,7 @@ run_b_p_plot <- function(path) {
       panel.grid.minor = element_line(colour = "grey90", size = 0.2)
     ) +
     xlab("Brood predation risk (b_p)") +
-    coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) +
-    scale_color_viridis_d(option = "turbo")  # different color set
+    coord_cartesian(xlim = x_limits, ylim = c(-1, 1))
 
 
   # Open PDF
@@ -306,12 +299,74 @@ run_divorce_plot <- function(path) {
     geom_smooth(method = "loess", se = TRUE, alpha = 0.3) +
     theme_classic(base_size = 12) +
     xlab("Divorce rate") +
-    coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) +
-    scale_color_viridis_d(option = "turbo")  # different color set
+    coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) 
 
 
   # Open PDF
   pdf(paste0(path, "../div_rate.pdf"), width = 8, height = 6)
+  print(p1)
+  dev.off()
+}
+
+run_mut_size_plot <- function(path) {
+
+  # Read CSV
+  readfile <- read.csv(paste0(path, "summaries.csv"))
+
+  # Prepare datasets
+  df_long1 <- readfile %>%
+    select(mut_size, u_base, rho, nu,
+           gamma, lambda, c, m) %>%
+    gather(`Loci`, Value, -mut_size)
+
+  # Determine shared x-axis limits
+  x_limits <- range(readfile$mut_size)
+
+  # First plot
+  p1 <- ggplot(df_long1, aes(x = mut_size, y = Value,
+                             color = `Loci`,
+                             group = `Loci`, 
+                             fill = `Loci`)) +
+    geom_point(alpha = 0.3, size = 1) +
+    geom_smooth(method = "loess", se = TRUE, alpha = 0.3) +
+    theme_classic(base_size = 12) +
+    xlab("Standard deviation of mutations") +
+    coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) 
+
+
+  # Open PDF
+  pdf(paste0(path, "../mut_size.pdf"), width = 8, height = 6)
+  print(p1)
+  dev.off()
+}
+
+
+run_mu_plot <- function(path) {
+
+  # Read CSV
+  readfile <- read.csv(paste0(path, "summaries.csv"))
+
+  # Prepare datasets
+  df_long1 <- readfile %>%
+    select(mu, u_base, rho, nu,
+           gamma, lambda, c, m) %>%
+    gather(`Loci`, Value, -mu)
+
+  # Determine shared x-axis limits
+  x_limits <- range(readfile$mu)
+
+  # First plot
+  p1 <- ggplot(df_long1, aes(x = mu, y = Value,
+                             color = `Loci`,
+                             group = `Loci`, 
+                             fill = `Loci`)) +
+    geom_point(alpha = 0.3, size = 1) +
+    geom_smooth(method = "loess", se = TRUE, alpha = 0.3) +
+    theme_classic(base_size = 12) +
+    xlab("Mutation rate") 
+
+  # Open PDF
+  pdf(paste0(path, "../mu.pdf"), width = 8, height = 6)
   print(p1)
   dev.off()
 }
