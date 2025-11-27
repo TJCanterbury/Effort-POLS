@@ -73,6 +73,7 @@ fn write_csv_header(path: &str) -> Result<(), Box<dyn std::error::Error>> {
         "div_rate",
         "varsigma", // the maximum sample size an individual is able to gather from cues
         "h", // hawkishness slope
+        "theta",
         "mean_fitness",
         "m",
         "c",
@@ -115,6 +116,7 @@ fn write_csv_header2(path: &str) -> Result<(), Box<dyn std::error::Error>> {
         "div_rate",
         "varsigma", // the maximum sample size an individual is able to gather from cues
         "h", // hawkishness slope
+        "theta",
         "mean_fitness",
         "m",
         "c",
@@ -620,6 +622,7 @@ impl Environment {
         data.push(self.div_rate);
         data.push(self.varsigma as f64); // the maximum sample size an individual is able to gather from cues
         data.push(self.h);
+        data.push(self.theta);
         data.push(self.mean_fitness as f64);
         data.push(mean_loc_m);
         data.push(mean_loc_c);
@@ -717,8 +720,8 @@ fn main() -> std::io::Result<()>  {
             mu_q:0.5,
             sigma_cue:4.0, // sd of the cue
             varsigma:10, // the maximum sample size an individual is able to gather from cues
-            h:5., // slow-fast slope of nest-defence/size/aggression (behavioural phenotypes more extreme therefore h>theta)
-            theta: 2.0, // slow-fast sigmoid slope of mortality risk against q-value (physiological
+            h:10., // slow-fast slope of nest-defence/size/aggression (behavioural phenotypes more extreme therefore h>theta)
+            theta: 10.0, // slow-fast sigmoid slope of mortality risk against q-value (physiological
             div_rate:1.0, // divorce rate
         };
 
@@ -726,6 +729,77 @@ fn main() -> std::io::Result<()>  {
     let mut r = RSession::new()?;
     r.exec("source('src/b_s.r')")?;
     let r_mutex = Mutex::new(r);
+////////////////////////////////////////////////////// hawkishness of fast individuals
+        // Construct the full path
+        let path = format!("./Results/{}/h/", project_id);
+        let path_construct = Path::new(&path);
+        // Ensure parent directory exists
+        let _ = fs::create_dir_all(path_construct); // Create directory path if it doesn't exist
+        let _ = write_csv_header(&path);
+    (0..iterations).into_par_iter().for_each(|g|  {
+        // Initialise stochastic variables
+        let mut rng = rand::thread_rng();
+        let mut env = env.clone();
+        let mut agent = agent.clone();
+        agent.mutate(1.0, 1.0); // randomize resident loci
+        env.pop = init_pop(pop_size, agent, sigma0);
+        let x = rng.gen_range(0.0..50.0); // uniform sample from parameter space
+        env.h = x;
+        
+        println!("Simulation started: h: {}, trial: {}", x, g);
+        run(
+            generations, 
+            &path, 
+            Some(&(x.to_string())), 
+            Some(&g),
+            env
+        );
+        println!("Simulation done: h: {}, trial: {}", x, g);
+
+        // ensure only one thread runs r at a time (plotting):
+        if g % 10 == 0 {
+            let mut r_guard = r_mutex.lock().unwrap(); 
+            r_guard.exec(&format!("run_h_plot('{}')", path)).unwrap();
+        }
+    });
+    let mut r = RSession::new()?;
+    r.exec(&format!("run_h_plot('{}')", path)).unwrap();
+
+////////////////////////////////////////////////////// mort (theta) of fast individuals
+        // Construct the full path
+        let path = format!("./Results/{}/theta/", project_id);
+        let path_construct = Path::new(&path);
+        // Ensure parent directory exists
+        let _ = fs::create_dir_all(path_construct); // Create directory path if it doesn't exist
+        let _ = write_csv_header(&path);
+    (0..iterations).into_par_iter().for_each(|g|  {
+        // Initialise stochastic variables
+        let mut rng = rand::thread_rng();
+        let mut env = env.clone();
+        let mut agent = agent.clone();
+        agent.mutate(1.0, 1.0); // randomize resident loci
+        env.pop = init_pop(pop_size, agent, sigma0);
+        let x = rng.gen_range(0.0..50.0); // uniform sample from parameter space
+        env.theta = x;
+        
+        println!("Simulation started: theta: {}, trial: {}", x, g);
+        run(
+            generations, 
+            &path, 
+            Some(&(x.to_string())), 
+            Some(&g),
+            env
+        );
+        println!("Simulation done: theta: {}, trial: {}", x, g);
+
+        // ensure only one thread runs r at a time (plotting):
+        if g % 10 == 0 {
+            let mut r_guard = r_mutex.lock().unwrap(); 
+            r_guard.exec(&format!("run_theta_plot('{}')", path)).unwrap();
+        }
+    });
+    let mut r = RSession::new()?;
+    r.exec(&format!("run_theta_plot('{}')", path)).unwrap();
 
 ////////////////////////////////////////////////////// Adult mortality rate (b_s) simulations
         // Construct the full path
@@ -921,7 +995,7 @@ fn main() -> std::io::Result<()>  {
         let mut agent = agent.clone();
         agent.mutate(1.0, 1.0); // randomize resident loci
         env.pop = init_pop(pop_size, agent, sigma0);
-        let x = rng.gen_range(0.0..10.0); // uniform sample from parameter space
+        let x = rng.gen_range(0.0..50.0); // uniform sample from parameter space
         env.h = x;
         
         println!("Simulation started: h: {}, trial: {}", x, g);

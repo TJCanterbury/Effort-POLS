@@ -74,6 +74,40 @@ run_h_plot <- function(path) {
   dev.off()
 }
 
+run_theta_plot <- function(path) {
+
+  # Read CSV
+  readfile <- read.csv(paste0(path, "summaries.csv"))
+
+  # Prepare datasets
+  df_long1 <- readfile %>%
+    select(theta, u_base, rho, nu,
+           gamma, lambda, c, m) %>%
+    gather(`Loci`, `Trait value`, -theta)
+
+  # Determine shared x-axis limits
+  x_limits <- range(readfile$theta)
+
+  # First plot
+  p1 <- ggplot(df_long1, aes(x = theta, y = `Trait value`,
+                             color = `Loci`,
+                             group = `Loci`,
+                             fill = `Loci`)) +
+    geom_point(alpha = 0.3, size = 1) +
+    geom_smooth(method = "loess", se = TRUE, alpha = 0.3) +
+    theme_classic(base_size = 12) +
+    theme(
+      panel.grid.major = element_line(colour = "grey80", size = 0.3),
+      panel.grid.minor = element_line(colour = "grey90", size = 0.2)
+    ) +
+    xlab("Slope of mortality of fast pace-of-life individuals (theta)") 
+    
+  
+  pdf(paste0(path, "../theta.pdf"), width = 8, height = 6)
+  print(p1)
+  dev.off()
+}
+
 run_sigma_plot <- function(path) {
 
   # Read CSV
