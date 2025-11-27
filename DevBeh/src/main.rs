@@ -356,14 +356,14 @@ impl Agent {
     }
 
     fn surivorship(&self, b_s:f64, c_q:f64, c_v:f64, c_u:f64, theta:f64) -> f64 {
-        let s: f64 =  b_s*(1. - self.q * c_q)*(1. - self.pol_v() *c_v)*(1. - self.u * c_u); 
+        let s: f64 =  b_s*(1. - sigmoid(-theta*(self.q-0.5)) * c_q)*(1. - self.pol_v() *c_v)*(1. - self.u * c_u); 
         return s
     }
 }
 
 impl Environment {
     fn predation(&mut self, u1:f64,u2:f64,q1:f64,q2:f64) -> f64 {
-        return self.b_p * (1. - q1*(1.-u1)) * (1. - q2*(1.-u2))
+        return self.b_p * (1. - sigmoid(self.h*(q1-0.5))*(1.-u1)) * (1. - sigmoid(self.h*(q2-0.5))*(1.-u2))
     }
 
     fn negotiations(&mut self) {  
