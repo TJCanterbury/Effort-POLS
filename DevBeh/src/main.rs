@@ -298,7 +298,13 @@ impl Agent {
             // pace-of-life influence effort baseline
             let n = nm::new(self.nu, mut_size as f64).unwrap(); // generates normal distribution 
             let loc_mut = n.sample(&mut rng);
-            self.nu = loc_mut;
+            if loc_mut < 0. {
+                self.nu = 0.;
+            } else if loc_mut > 1.{
+                self.nu = 1.;
+            } else {
+                self.nu = loc_mut;
+            }
         }
 
         
@@ -308,7 +314,13 @@ impl Agent {
             // scales the perceived informativeness of partner gathering outcomes.
             let n = nm::new(self.lambda, mut_size as f64).unwrap(); // generates normal distribution 
             let loc_mut = n.sample(&mut rng);
-            self.lambda = loc_mut;
+            if loc_mut < 0. {
+                self.lambda = 0.;
+            } else if loc_mut > 1.{
+                self.lambda = 1.;
+            } else {
+                self.lambda = loc_mut;
+            }
         }
         
         dice = rng.gen(); //gamma
@@ -317,13 +329,19 @@ impl Agent {
             // scales the perceived informativeness of partner gathering outcomes.
             let n = nm::new(self.gamma, mut_size as f64).unwrap(); // generates normal distribution 
             let loc_mut = n.sample(&mut rng);
-            self.gamma = loc_mut;
+            if loc_mut < 0. {
+                self.gamma = 0.;
+            } else if loc_mut > 1.{
+                self.gamma = 1.;
+            } else {
+                self.gamma = loc_mut;
+            }
         }
     }
 
     fn pol_v(&self) -> f64 {
         // return self.c2*(1. - self.c) + self.c / (1. + (self.m * (self.q) ).exp());
-        return self.m * self.q + self.c;
+        return (self.m * (self.q-0.5) + self.c).clamp(0., 1.);
     }
 
     fn social_cue(&mut self, partner_q:f64, sigma_cue:f64) {
@@ -687,7 +705,7 @@ fn main() -> std::io::Result<()>  {
 
         let agent:Agent = Agent {
             sigma: sigma0,
-            pi: 100.,
+            pi: 0.5,
             q: 0.5,
             fitness: 0.,
             u:0., 
@@ -714,11 +732,11 @@ fn main() -> std::io::Result<()>  {
             b_s:0.99, // Baseline survival rate of adults (5 years lifespan)
             b_p:1.0, // Brood predation risk (assuming twice the mortality of adults)
             c_q:0.25, // survival cost of fast POL in winter 
-            c_v:0.1, // surival cost of making observations in winter
+            c_v:0.001, // surival cost of making observations in winter
             c_u:0.25, // survival cost of parental effort in winter (highest energy expenditure)
             sigma0, // Locus determining prior alpha
             mu_q:0.5,
-            sigma_cue:4.0, // sd of the cue
+            sigma_cue: 1./20., // sd of the cue
             varsigma:10, // the maximum sample size an individual is able to gather from cues
             h:10., // slow-fast slope of nest-defence/size/aggression (behavioural phenotypes more extreme therefore h>theta)
             theta: 10.0, // slow-fast sigmoid slope of mortality risk against q-value (physiological
