@@ -177,8 +177,8 @@ fn dice() -> f64 {
     return dice
 }
 
-fn sigmoid(q:f64, m:f64) -> f64 {
-    return 1. / (1. + (-q * m).exp())
+fn sigmoid(q:f64) -> f64 {
+    return 1. / (1. + (-q).exp())
 }
 
 // Structs
@@ -365,15 +365,15 @@ impl Agent {
         let r:f64
             = self.u_base
             + self.rho
-            + self.nu*sigmoid(self.q,1.)
+            + self.nu*sigmoid(self.q)
             // + self.gamma*(1.-h)*(sigmoid(self.pi,1.)-sigmoid(self.q,1.)) 
-            + self.gamma*(1.-h)*(sigmoid(self.pi,1.)) 
+            + self.gamma*(1.-h)*(sigmoid(self.pi)) 
             - self.lambda*(u2 - self.u_base);
         return r
     }
 
     fn surivorship(&self, b_s:f64, c_q:f64, c_v:f64, c_u:f64, theta:f64) -> f64 {
-        let s: f64 =  b_s*(1. - (1. / (1.+(-self.q * theta).exp())) * c_q)*(1. - self.pol_v() *c_v)*(1. - (1. / (1.+(-self.u).exp())) * c_u);
+        let s: f64 =  b_s*(1. - sigmoid(self.q * theta) * c_q)*(1. - self.pol_v() *c_v)*(1. - sigmoid(self.u) * c_u);
         // let s: f64 =  b_s*(1. - (1. / (1.+(-self.q * theta).exp())) * c_q)*(1. - self.pol_v() *c_v)*(1. - self.u * c_u); 
         return s
     }
@@ -446,8 +446,8 @@ impl Environment {
                 // u1 = u1.clamp(0., 10.);
                 // u2 = u2.clamp(0., 10.);
                 // println!("u1: {}, u2: {}", u1, u2);
-                u1 = sigmoid(u1, 1.);
-                u2 = sigmoid(u2, 1.);
+                u1 = sigmoid(u1);
+                u2 = sigmoid(u2);
 
                 ben = self.b_f + 1.*(u1.max(0.0) + u2.max(0.0));
                 self.pop[male].u = u1;
