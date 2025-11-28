@@ -365,7 +365,7 @@ impl Agent {
         let r:f64
             = self.rho
             + self.nu*sigmoid(-self.q)
-            + self.gamma*(sigmoid(-self.q) - sigmoid(-self.pi)) 
+            + self.gamma*(1.-h)*(sigmoid(-self.q) - sigmoid(-self.pi)) 
             - self.lambda*(sigmoid(-u2) - self.u_base);
         return r
     }
