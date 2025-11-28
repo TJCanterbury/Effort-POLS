@@ -336,7 +336,7 @@ impl Agent {
 
     fn pol_v(&self) -> f64 {
         // return self.c2*(1. - self.c) + self.c / (1. + (self.m * (self.q) ).exp());
-        return (self.c+ (self.m * (self.q))).min(1.0).max(0.0);
+        return (self.c+ (self.m * (self.q))).clamp(0., 1.);
     }
 
     fn social_cue(&mut self, partner_q:f64, sigma_cue:f64) {
