@@ -6,338 +6,143 @@ suppressPackageStartupMessages({
 library(patchwork)
 })
 
-run_b_f_plot <- function(path) {
+loci_labels <- list(
+  u_base = bquote("Responsiveness effort threshold "(u)),
+  rho    = bquote("Baseline effort " (rho)),
+  nu     = bquote("POLS effort bias "(nu)),
+  gamma  = bquote("Social information effort bias "(gamma)),
+  lambda = bquote("Responsiveness to partner effort "(lambda)),
+  c      = bquote("Baseline observation rate "(c)),
+  m      = bquote("POLS observation bias "(m))
+)
 
-  # Read CSV
+run_trait_plot <- function(
+  path,
+  x_var,
+  x_label,
+  out_name,
+  y_limits = c(-1, 1)
+) {
+
   readfile <- read.csv(paste0(path, "summaries.csv"))
 
-  # Prepare datasets
-  df_long1 <- readfile %>%
-    select(b_f, u_base, rho, nu,
-           gamma, lambda, c, m) %>%
-    gather(`Loci`, Value, -b_f)
+  # tidy evaluation
+  x_sym <- rlang::sym(x_var)
 
-  # Determine shared x-axis limits
-  x_limits <- range(readfile$b_f)
+  df_long <- readfile %>%
+    dplyr::select(!!x_sym, u_base, rho, nu, gamma, lambda, c, m) %>%
+    tidyr::gather(Loci, Value, -!!x_sym)
 
-  # First plot
-  p1 <- ggplot(df_long1, aes(x = b_f, y = Value,
-                             color = `Loci`,
-                             group = `Loci`, 
-                             fill = `Loci`)) +
+  x_limits <- range(readfile[[x_var]])
+
+  p <- ggplot(df_long, aes(
+      x = !!x_sym,
+      y = Value,
+      color = Loci,
+      group = Loci,
+      fill  = Loci
+    )
+  ) +
     geom_point(alpha = 0.3, size = 1) +
     geom_smooth(method = "loess", se = TRUE, alpha = 0.3) +
     theme_classic(base_size = 12) +
-    xlab("Independence of offspring (b_f)") +
+    xlab(x_label) +
     theme(
-      panel.grid.major = element_line(colour = "grey80", size = 0.3),
-      panel.grid.minor = element_line(colour = "grey90", size = 0.2)
+      panel.grid.major = element_line(colour = "grey80", linewidth = 0.3),
+      panel.grid.minor = element_line(colour = "grey90", linewidth = 0.2)
     ) +
-    coord_cartesian(xlim = x_limits, ylim = c(-1, 1))
+    scale_color_discrete(name = "Loci", labels = loci_labels) +
+    scale_fill_discrete(name = "Loci", labels = loci_labels) +
+    coord_cartesian(xlim = x_limits, ylim = y_limits)
 
-  # Open PDF
-  pdf(paste0(path, "../b_f.pdf"), width = 8, height = 6)
-  print(p1)
+  pdf(paste0(path, "../", out_name, ".pdf"), width = 8, height = 6)
+  print(p)
   dev.off()
+
+  file.copy(
+    paste0(path, "../", out_name, ".pdf"),
+    paste0(path, "../../", out_name, ".pdf"),
+    overwrite = TRUE
+  )
+}
+
+run_b_f_plot <- function(path) {
+  run_trait_plot(
+    path,
+    x_var   = "b_f",
+    x_label = bquote("Independence of offspring "(b[f])),
+    out_name = "b_f"
+  )
 }
 
 run_h_plot <- function(path) {
-
-  # Read CSV
-  readfile <- read.csv(paste0(path, "summaries.csv"))
-
-  # Prepare datasets
-  df_long1 <- readfile %>%
-    select(h, u_base, rho, nu,
-           gamma, lambda, c, m) %>%
-    gather(`Loci`, `Trait value`, -h)
-
-  # Determine shared x-axis limits
-  x_limits <- range(readfile$h)
-
-  # First plot
-  p1 <- ggplot(df_long1, aes(x = h, y = `Trait value`,
-                             color = `Loci`,
-                             group = `Loci`,
-                             fill = `Loci`)) +
-    geom_point(alpha = 0.3, size = 1) +
-    geom_smooth(method = "loess", se = TRUE, alpha = 0.3) +
-    theme_classic(base_size = 12) +
-    theme(
-      panel.grid.major = element_line(colour = "grey80", size = 0.3),
-      panel.grid.minor = element_line(colour = "grey90", size = 0.2)
-    ) +
-    xlab("Hawkishness of fast pace-of-life individuals (eta)") +
-    coord_cartesian(xlim = x_limits, ylim = c(-1, 1))
-    
-  
-  pdf(paste0(path, "../h.pdf"), width = 8, height = 6)
-  print(p1)
-  dev.off()
+  run_trait_plot(
+    path,
+    x_var   = "h",
+    x_label = bquote("Hawkishness of fast pace-of-life individuals "(eta)),
+    out_name = "h"
+  )
 }
 
 run_theta_plot <- function(path) {
-
-  # Read CSV
-  readfile <- read.csv(paste0(path, "summaries.csv"))
-
-  # Prepare datasets
-  df_long1 <- readfile %>%
-    select(theta, u_base, rho, nu,
-           gamma, lambda, c, m) %>%
-    gather(`Loci`, `Trait value`, -theta)
-
-  # Determine shared x-axis limits
-  x_limits <- range(readfile$theta)
-
-  # First plot
-  p1 <- ggplot(df_long1, aes(x = theta, y = `Trait value`,
-                             color = `Loci`,
-                             group = `Loci`,
-                             fill = `Loci`)) +
-    geom_point(alpha = 0.3, size = 1) +
-    geom_smooth(method = "loess", se = TRUE, alpha = 0.3) +
-    theme_classic(base_size = 12) +
-    theme(
-      panel.grid.major = element_line(colour = "grey80", size = 0.3),
-      panel.grid.minor = element_line(colour = "grey90", size = 0.2)
-    ) +
-    xlab("Slope of mortality for pace-of-life individuals (theta)") +
-    coord_cartesian(xlim = x_limits, ylim = c(-1, 1))
-    
-  
-  pdf(paste0(path, "../theta.pdf"), width = 8, height = 6)
-  print(p1)
-  dev.off()
+  run_trait_plot(
+    path,
+    x_var   = "theta",
+    x_label = bquote("Slope of mortality for pace-of-life individuals "(theta)),
+    out_name = "theta"
+  )
 }
 
 run_sigma_plot <- function(path) {
-
-  # Read CSV
-  readfile <- read.csv(paste0(path, "summaries.csv"))
-
-  # Prepare datasets
-  df_long1 <- readfile %>%
-    select(sigma0, u_base, rho, nu,
-           gamma, lambda, c, m) %>%
-    gather(`Loci`, `Trait value`, -sigma0)
-
-  # Determine shared x-axis limits
-  x_limits <- range(readfile$sigma0)
-
-  # First plot
-  p1 <- ggplot(df_long1, aes(x = sigma0, y = `Trait value`,
-                             color = `Loci`,
-                             group = `Loci`,
-                             fill = `Loci`)) +
-    geom_point(alpha = 0.3, size = 1) +
-    geom_smooth(method = "loess", se = TRUE, alpha = 0.3) +
-    theme_classic(base_size = 12) +
-    theme(
-      panel.grid.major = element_line(colour = "grey80", size = 0.3),
-      panel.grid.minor = element_line(colour = "grey90", size = 0.2)
-    ) +
-    xlab("Standard deviation of pace-of-life phenotype (sigma)") +
-    coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) 
-    
-  
-  pdf(paste0(path, "../sigma0.pdf"), width = 8, height = 6)
-  print(p1)
-  dev.off()
+  run_trait_plot(
+    path,
+    x_var   = "sigma0",
+    x_label = bquote("Standard deviation of pace-of-life phenotype "(sigma)),
+    out_name = "sigma0"
+  )
 }
 
 run_sigmacue_plot <- function(path) {
-
-  # Read CSV
-  readfile <- read.csv(paste0(path, "summaries.csv"))
-
-  # Prepare datasets
-  df_long1 <- readfile %>%
-    select(sigma_cue, u_base, rho, nu,
-           gamma, lambda, c, m) %>%
-    gather(`Loci`, Value, -sigma_cue)
-
-  # df_long2 <- readfile %>%
-  #   select(sigma_cue, x) %>%
-  #   gather(`Loci`, Value, -sigma_cue)
-
-  # Determine shared x-axis limits
-  x_limits <- range(readfile$sigma_cue)
-
-  # First plot
-  p1 <- ggplot(df_long1, aes(x = sigma_cue, y = Value,
-                             color = `Loci`,
-                             group = `Loci`,
-                             fill = `Loci`)) +
-    geom_point(alpha = 0.3, size = 1) +
-    geom_smooth(method = "loess", se = TRUE, alpha = 0.3) +
-    theme_classic(base_size = 12) +
-    theme(
-      panel.grid.major = element_line(colour = "grey80", size = 0.3),
-      panel.grid.minor = element_line(colour = "grey90", size = 0.2)
-    ) +
-    xlab("Standard deviation of social cue") +
-    coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) 
-  # Second plot
-  # p2 <- ggplot(df_long2, aes(x = sigma_cue, y = Value,
-  #                            color = `Loci`,
-  #                            group = `Loci`)) +
-  #   geom_point(alpha = 0.3, size = 1) +
-  #   geom_smooth(se=FALSE, method = "gam", formula = y ~ s(x, bs = "cs")) +
-  #   theme_classic(base_size = 12) +
-  #   xlab("Standard deviation of social cue") +
-  #   coord_cartesian(xlim = x_limits) +
-  #   scale_color_brewer(palette = "Set2") + 
-  #   theme(legend.title = element_blank())
-    # Open PDF
-  pdf(paste0(path, "../sigma_cue.pdf"), width = 8, height = 6)
-  print(p1)
-  dev.off()
+  run_trait_plot(
+    path,
+    x_var   = "sigma_cue",
+    x_label = bquote("Standard deviation of social cue"),
+    out_name = "sigma_cue"
+  )
 }
 
 run_cuecost_plot <- function(path) {
-
-  # Read CSV
-  readfile <- read.csv(paste0(path, "summaries.csv"))
-
-  # Prepare datasets
-  df_long1 <- readfile %>%
-    select(c_v, u_base, rho, nu,
-           gamma, lambda, c, m) %>%
-    gather(`Loci`, Value, -c_v)
-    
-    
-  # First plot
-  p1 <- ggplot(df_long1, aes(x = c_v, y = Value,
-                             color = `Loci`,
-                             group = `Loci`,
-                             fill = `Loci`)) +
-    geom_point(alpha = 0.3, size = 1) +
-    geom_smooth(method = "loess", se = TRUE, alpha = 0.3) +
-    theme_classic(base_size = 12) +
-    theme(
-      panel.grid.major = element_line(colour = "grey80", size = 0.3),
-      panel.grid.minor = element_line(colour = "grey90", size = 0.2)
-    ) +
-    xlab("Cost of social cue (c_v)") +
-    coord_cartesian(xlim = c(0, 1), ylim = c(-1, 1)) 
-
-  # Open PDF
-  pdf(paste0(path, "../cue_cost.pdf"), width = 8, height = 6)
-  print(p1)
-  dev.off()
+  run_trait_plot(
+    path,
+    x_var   = "c_v",
+    x_label = bquote("Cost of social cue "(c[v])),
+    out_name = "cue_cost"
+  )
 }
 
 run_b_s_plot <- function(path) {
-
-  # Read CSV
-  readfile <- read.csv(paste0(path, "summaries.csv"))
-
-  # Prepare datasets
-  df_long1 <- readfile %>%
-    select(b_s, u_base, rho, nu,
-           gamma, lambda, c, m) %>%
-    gather(`Loci`, Value, -b_s)
-
-  # df_long2 <- readfile %>%
-  #   select(s_p) %>%
-  #   gather(`Loci`, Value, -s_p)
-
-  # Determine shared x-axis limits
-  x_limits <- range(readfile$b_s)
-
-  # First plot
-  p1 <- ggplot(df_long1, aes(x = b_s, y = Value,
-                             color = `Loci`,
-                             group = `Loci`,
-                             fill = `Loci`)) +
-    geom_point(alpha = 0.3, size = 1) +
-    geom_smooth(method = "loess", se = TRUE, alpha = 0.3) +
-    theme_classic(base_size = 12) +
-    theme(
-      panel.grid.major = element_line(colour = "grey80", size = 0.3),
-      panel.grid.minor = element_line(colour = "grey90", size = 0.2)
-    ) +
-    xlab("Baseline survival rate (b_s)") +
-    coord_cartesian(xlim = x_limits, ylim = c(-1, 1))
-
-
-  # Open PDF
-  pdf(paste0(path, "../b_s.pdf"), width = 8, height = 6)
-  print(p1)
-  dev.off()
+  run_trait_plot(
+    path,
+    x_var   = "b_s",
+    x_label = bquote("Baseline survival rate "(b[s])),
+    out_name = "b_s"
+  )
 }
 
 run_b_p_plot <- function(path) {
-
-  # Read CSV
-  readfile <- read.csv(paste0(path, "summaries.csv"))
-
-  # Prepare datasets
-  df_long1 <- readfile %>%
-    select(b_p, u_base, rho, nu,
-           gamma, lambda, c, m) %>%
-    gather(`Loci`, Value, -b_p)
-
-
-  # Determine shared x-axis limits
-  x_limits <- range(readfile$b_p)
-
-  # First plot
-  p1 <- ggplot(df_long1, aes(x = b_p, y = Value,
-                             color = `Loci`,
-                             group = `Loci`, 
-                             fill = `Loci`)) +
-    geom_point(alpha = 0.3, size = 1) +
-    geom_smooth(method = "loess", se = TRUE, alpha = 0.3) +
-    theme_classic(base_size = 12) +
-    theme(
-      panel.grid.major = element_line(colour = "grey80", size = 0.3),
-      panel.grid.minor = element_line(colour = "grey90", size = 0.2)
-    ) +
-    xlab("Brood predation risk (b_p)") +
-    coord_cartesian(xlim = x_limits, ylim = c(-1, 1))
-
-
-  # Open PDF
-  pdf(paste0(path, "../b_p.pdf"), width = 8, height = 6)
-
-  # Stack plots with patchwork (same width)
-  # print(p1 / p2 + plot_layout(ncol = 1, heights = c(1,1)))
-  print(p1)
-
-  # Close PDF
-  dev.off()
+  run_trait_plot(
+    path,
+    x_var   = "b_p",
+    x_label = bquote("Brood predation risk "(b[p])),
+    out_name = "b_p"
+  )
 }
 
 run_divorce_plot <- function(path) {
-
-  # Read CSV
-  readfile <- read.csv(paste0(path, "summaries.csv"))
-
-  # Prepare datasets
-  df_long1 <- readfile %>%
-    select(div_rate, u_base, rho, nu,
-           gamma, lambda, c, m) %>%
-    gather(`Loci`, Value, -div_rate)
-
-  # Determine shared x-axis limits
-  x_limits <- range(readfile$div_rate)
-
-  # First plot
-  p1 <- ggplot(df_long1, aes(x = div_rate, y = Value,
-                             color = `Loci`,
-                             group = `Loci`, 
-                             fill = `Loci`)) +
-    geom_point(alpha = 0.3, size = 1) +
-    geom_smooth(method = "loess", se = TRUE, alpha = 0.3) +
-    theme_classic(base_size = 12) +
-    xlab("Divorce rate") +
-    coord_cartesian(xlim = x_limits, ylim = c(-1, 1)) 
-
-
-  # Open PDF
-  pdf(paste0(path, "../div_rate.pdf"), width = 8, height = 6)
-  print(p1)
-  dev.off()
+  run_trait_plot(
+    path,
+    x_var   = "div_rate",
+    x_label = bquote("Divorce rate"),
+    out_name = "div_rate"
+  )
 }
