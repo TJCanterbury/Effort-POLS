@@ -4,6 +4,8 @@ suppressPackageStartupMessages({
   library(ggplot2)
   library(gridExtra)
 library(patchwork)
+library(akima)
+library(fields)
 })
 
 loci_labels <- list(
@@ -17,11 +19,72 @@ loci_labels <- list(
 )
 
 trait_labels <- list(
-  mean_faster_effort = bquote("Mean effort of the faster partner"),
-  mean_slower_effort    = bquote("Mean effort of the slower partner"),
-  mean_fast_h     = bquote("Mean uncertainty of the faster partner"),
-  mean_slow_h  = bquote("Mean uncertainty of the slower partner")
+  mean_faster_effort = bquote("Effort of fast individuals"),
+  mean_slower_effort    = bquote("Effort of slow individuals"),
+  mean_fast_h     = bquote("Uncertainty of fast individuals"),
+  mean_slow_h  = bquote("Uncertainty of slow individuals")
 )
+
+run_Baseline_plot <- function(path) {
+  
+  readfile <- read.csv(paste0(path, "summaries.csv"))
+
+  df <- readfile %>%
+    mutate(r=u1/(u1+u2)) 
+  
+  
+  # Create grid
+  gx <- seq(-20, 20, length = 20)
+  gy <- seq(-20, 20, length = 20)
+
+
+  # Predation
+  pdf(paste0(path, "../", "baseline_pred", ".pdf"), width = 8, height = 8)
+  # Interpolate using akima-style linear interpolation
+  interp <- akima::interp(df$qm, df$qf, 1-df$pred, xo = gx, yo = gy, duplicate = "mean")
+  # Heatmap
+  image.plot(
+    interp$x, interp$y, interp$z,
+    col  = hcl.colors(100, "Inferno"),
+    asp  = 1,
+    zlim = c(0,1),
+    xlab = expression(q[m]),
+    ylab = expression(q[f]),
+    legend.lab = expression("Nest defence")
+  )
+  # Data support
+  points(df$qm, df$qf, pch = 16, cex = 0.2, col = rgb(1,1,1,0.3))
+  dev.off()
+
+  # Effort
+  pdf(paste0(path, "../", "baseline_u", ".pdf"), width = 8, height = 8)
+  # Interpolate using akima-style linear interpolation
+  interp <- akima::interp(df$qm, df$qf, df$r, xo = gx, yo = gy, duplicate = "mean")
+  # Heatmap
+  image.plot(
+    interp$x, interp$y, interp$z,
+    col  = hcl.colors(100, "Inferno"),
+    asp  = 1,
+    zlim = c(0,1),
+    xlab = expression(q[m]),
+    ylab = expression(q[f]),
+    legend.lab = expression(r)
+  )
+  # Data support
+  points(df$qm, df$qf, pch = 16, cex = 0.2, col = rgb(1,1,1,0.3))
+  dev.off()
+
+  file.copy(
+    paste0(path, "../", "baseline_u", ".pdf"),
+    paste0(path, "../../", "baseline_u", ".pdf"),
+    overwrite = TRUE
+  )
+  file.copy(
+    paste0(path, "../", "baseline_pred", ".pdf"),
+    paste0(path, "../../", "baseline_pred", ".pdf"),
+    overwrite = TRUE
+  )
+}
 
 run_trait_plot <- function(
   path,
@@ -61,7 +124,8 @@ run_trait_plot <- function(
     geom_point(alpha = 0.3, size = 1) +
     geom_smooth(method = "loess", se = TRUE, alpha = 0.3) +
     theme_classic(base_size = 12) +
-    xlab(x_label) +
+    xlab("") +
+    ylab("ESS values") +
     theme(
       panel.grid.major = element_line(colour = "grey80", linewidth = 0.3),
       panel.grid.minor = element_line(colour = "grey90", linewidth = 0.2)
@@ -82,12 +146,13 @@ run_trait_plot <- function(
     geom_smooth(method = "loess", se = TRUE, alpha = 0.3) +
     theme_classic(base_size = 12) +
     xlab(x_label) +
+    ylab("Mean values") +
     theme(
       panel.grid.major = element_line(colour = "grey80", linewidth = 0.3),
       panel.grid.minor = element_line(colour = "grey90", linewidth = 0.2)
     ) +
-    scale_color_discrete(name = "Loci", labels = trait_labels) +
-    scale_fill_discrete(name = "Loci", labels = trait_labels) +
+    scale_color_discrete(name = "Traits", labels = trait_labels) +
+    scale_fill_discrete(name = "Traits", labels = trait_labels) +
     coord_cartesian(xlim = x_limits, ylim = c(0,1))
 
   pdf(paste0(path, "../", out_name, ".pdf"), width = 8, height = 6)
@@ -101,12 +166,22 @@ run_trait_plot <- function(
   )
 }
 
+
 run_b_f_plot <- function(path) {
   run_trait_plot(
     path,
     x_var   = "b_f",
     x_label = bquote("Independence of offspring "(b[f])),
     out_name = "b_f"
+  )
+}
+
+run_c_q_plot <- function(path) {
+  run_trait_plot(
+    path,
+    x_var   = "c_q",
+    x_label = bquote("POLS mortality gradient "(c[q])),
+    out_name = "c_q"
   )
 }
 
