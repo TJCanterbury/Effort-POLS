@@ -40,8 +40,8 @@ run_BaselineL_plot <- function(path) {
   
   
   # Create grid
-  gx <- seq(-20, 20, length = 20)
-  gy <- seq(-20, 20, length = 20)
+  gx <- seq(-1, 1, length = 20)
+  gy <- seq(-1, 1, length = 20)
 
 
   # Predation
@@ -72,7 +72,8 @@ run_BaselineL_plot <- function(path) {
     zlim = c(0,1),
     xlab = expression(q[m]),
     ylab = expression(q[f]),
-    legend.lab = expression(r)
+    legend.lab = expression("male:female effort ratio"),
+    cex=1.5
   )
   # Data support
   # points(df$qm, df$qf, pch = 16, cex = 0.2, col = rgb(1,1,1,0.3))
@@ -99,8 +100,8 @@ run_BaselineH_plot <- function(path) {
   
   
   # Create grid
-  gx <- seq(-20, 20, length = 20)
-  gy <- seq(-20, 20, length = 20)
+  gx <- seq(-1, 1, length = 20)
+  gy <- seq(-1, 1, length = 20)
 
 
   # Predation
@@ -131,7 +132,7 @@ run_BaselineH_plot <- function(path) {
     zlim = c(0,1),
     xlab = expression(q[m]),
     ylab = expression(q[f]),
-    legend.lab = expression(r)
+    legend.lab = expression("male:female effort ratio")
   )
   # Data support
   # points(df$qm, df$qf, pch = 16, cex = 0.2, col = rgb(1,1,1,0.3))
@@ -157,8 +158,11 @@ run_trait_plot <- function(
   y_limits = c(-1, 1)
 ) {
 
-  readfile <- read.csv(paste0(path, "summaries.csv"))
-x_sym <- rlang::sym(x_var)
+  readfile <- read.csv(paste0(path, "summaries.csv")) %>%
+    mutate(b_s = 1/(1-b_s)) %>%
+    filter(b_s <= 100)
+
+  x_sym <- rlang::sym(x_var)
   df_fecundity <- readfile %>%
     mutate(fast_slow = mean_f_s_w, slow_slow = s_w, fast_fast = f_w) %>%
     dplyr::select(!!x_sym, fast_slow, fast_fast, slow_slow) %>%
@@ -217,7 +221,7 @@ x_sym <- rlang::sym(x_var)
       panel.grid.major = element_line(colour = "grey80", linewidth = 0.3),
       panel.grid.minor = element_line(colour = "grey90", linewidth = 0.2),
       legend.position = "none") +
-    coord_cartesian(xlim = x_limits, ylim = c(0.5,1.5))
+    coord_cartesian(xlim = x_limits, ylim = c(0,2.5))
   
   effort <- ggplot(df_effort, aes(x = !!x_sym, y = Value, color = Loci, group = Loci, fill  = Loci)) +
     geom_point(alpha = 0.3, size = 1) +
@@ -415,7 +419,7 @@ run_sigma_plot <- function(path) {
   run_trait_plot(
     path,
     x_var   = "sigma0",
-    x_label = bquote("Standard deviation of pace-of-life phenotype "(sigma)),
+    x_label = bquote("Standard deviation of POLS "(sigma)),
     out_name = "sigma0"
   )
 }
@@ -442,7 +446,7 @@ run_b_s_plot <- function(path) {
   run_trait_plot(
     path,
     x_var   = "b_s",
-    x_label = bquote("Baseline survival rate "(b[s])),
+    x_label = bquote("Baseline lifespan (years)"),
     out_name = "b_s"
   )
 }
