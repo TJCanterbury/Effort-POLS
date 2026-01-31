@@ -625,16 +625,25 @@ impl Environment {
                     u2 = self.pop[female].r(u1,h2);
                     
                 }
-                
-                u1 = sigmoid(u1);
-                u2 = sigmoid(u2);
+                u1 = sigmoid(2.*u1);
+                u2 = sigmoid(2.*u2);
+                let alpha1 = u1*(1. - self.c_psi*self.pop[male].pol_v());
+                let alpha2 = u2*(1. - self.c_psi*self.pop[female].pol_v());
+                let beta1 = (1.-u1)*(1. - self.c_psi*self.pop[male].pol_v());
+                let beta2 = (1.-u2)*(1. - self.c_psi*self.pop[female].pol_v());
+                if (alpha1 < 0.) | (alpha2 < 0.) {
+                    print!("\n{}, {}", u1, u2)
+                }
+                // Provisioning
+                ben = ((alpha1.max(0.0) + alpha2.max(0.0))/2.).powf(0.5);
 
-                ben = ((u1.max(0.0) + u2.max(0.0))/2.).powf(0.5);
-                self.pop[male].u = u1;
-                self.pop[female].u = u2;
+                // Predation
+                self.pop[male].u = alpha1;
+                self.pop[female].u = alpha2;
                 q1 = self.pop[male].q;
                 q2 = self.pop[female].q;
-                pred = self.predation(u1, u2, q1, q2);
+                pred = self.predation(beta1, beta2, q1, q2);
+
                 data.push(q1);
                 data.push(q2);
                 data.push(u1);
@@ -967,7 +976,7 @@ fn main() -> std::io::Result<()>  {
 
             b_f:1.0, // Baseline fecundity (offspring independence)
             b_s:0.95, // Baseline survival rate of adults (5 years lifespan)
-            b_p:0.75, // Brood predation risk (assuming twice the mortality of adults)
+            b_p:0., // Brood predation risk (assuming twice the mortality of adults)
             c_q:0.4, // survival cost of fast POL in winter 
             c_v:0.0, // surival cost of making observations in winter
             c_psi:1.0, // opportunity cost of making observations on provisioning
@@ -993,6 +1002,42 @@ fn main() -> std::io::Result<()>  {
     let mut r = RSession::new()?;
     r.exec("source('src/plots.r')")?;
     let r_mutex = Mutex::new(r);
+
+////////////////////////////// Cue detectability (cue_sigma) sims
+    // Construct the full path
+    let path = format!("./Results/{}/sigma_cue/", project_id);
+    let path_construct = Path::new(&path);
+     // Ensure parent directory exists
+    let _ = fs::create_dir_all(path_construct); // Create directory path if it doesn't exist
+    let _ = write_csv_header(&path);
+    (0..iterations).into_par_iter().for_each(|g|  {
+        // Initialise stochastic variables
+        let mut rng = rand::thread_rng();
+        let mut env = env.clone();
+        let mut agent = agent.clone();
+        agent.mutate(1.0, 1.0); // randomize resident loci
+        env.pop = init_pop(pop_size, agent, sigma0);
+        let x = rng.gen_range(0.001..50.0); // uniform sample from parameter space
+        env.sigma_cue = x;
+        
+        println!("Simulation started: sigmacue: {}, trial: {}", x, g);
+        run(
+            generations, 
+            &path, 
+            Some(&(x.to_string())), 
+            Some(&g),
+            env
+        );
+        println!("Simulation done: sigmacue: {}, trial: {}", x, g);
+
+        // ensure only one thread runs r at a time (plotting):
+        if g % 5 == 0 {
+            let mut r_guard = r_mutex.lock().unwrap(); 
+            r_guard.exec(&format!("run_sigmacue_plot('{}')", path)).unwrap();
+        }
+    });
+    let mut r = RSession::new()?;
+    r.exec(&format!("run_sigmacue_plot('{}')", path)).unwrap();
 
 ////////////////////////////// Brood predation risk (b_p) sims
     // Construct the full path
@@ -1030,41 +1075,6 @@ fn main() -> std::io::Result<()>  {
     let mut r = RSession::new()?;
     r.exec(&format!("run_b_p_plot('{}')", path)).unwrap();
 
-////////////////////////////// Cue detectability (cue_sigma) sims
-    // Construct the full path
-    let path = format!("./Results/{}/sigma_cue/", project_id);
-    let path_construct = Path::new(&path);
-     // Ensure parent directory exists
-    let _ = fs::create_dir_all(path_construct); // Create directory path if it doesn't exist
-    let _ = write_csv_header(&path);
-    (0..iterations).into_par_iter().for_each(|g|  {
-        // Initialise stochastic variables
-        let mut rng = rand::thread_rng();
-        let mut env = env.clone();
-        let mut agent = agent.clone();
-        agent.mutate(1.0, 1.0); // randomize resident loci
-        env.pop = init_pop(pop_size, agent, sigma0);
-        let x = rng.gen_range(0.001..5.0); // uniform sample from parameter space
-        env.sigma_cue = x;
-        
-        println!("Simulation started: sigmacue: {}, trial: {}", x, g);
-        run(
-            generations, 
-            &path, 
-            Some(&(x.to_string())), 
-            Some(&g),
-            env
-        );
-        println!("Simulation done: sigmacue: {}, trial: {}", x, g);
-
-        // ensure only one thread runs r at a time (plotting):
-        if g % 5 == 0 {
-            let mut r_guard = r_mutex.lock().unwrap(); 
-            r_guard.exec(&format!("run_sigmacue_plot('{}')", path)).unwrap();
-        }
-    });
-    let mut r = RSession::new()?;
-    r.exec(&format!("run_sigmacue_plot('{}')", path)).unwrap();
 
 ////////////////////////////// Adult mortality rate (b_s) simulations
     // Construct the full path

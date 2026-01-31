@@ -3,7 +3,7 @@ cat("Script started\n")
 args_all <- commandArgs(trailingOnly = FALSE)
 script_path <- sub("^--file=", "", args_all[grep("^--file=", args_all)])
 script_dir <- dirname(normalizePath(script_path))
-source(file.path(script_dir, "b_s.r"))
+source(file.path(script_dir, "plots.r"))
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 1) {
   stop("Usage: Rscript script.R <input>")

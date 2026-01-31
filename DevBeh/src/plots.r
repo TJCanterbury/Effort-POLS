@@ -36,7 +36,8 @@ run_BaselineL_plot <- function(path) {
   readfile <- read.csv(paste0(path, "summaries.csv"))
 
   df <- readfile %>%
-    mutate(r=u1/(u1+u2)) 
+    mutate(r=u1) 
+    # mutate(r=u1/(u1+u2+0.000000000000000001)) 
   # Create grid
   gx <- seq(-1, 1, length = 20)
   gy <- seq(-1, 1, length = 20)
@@ -105,7 +106,8 @@ run_BaselineH_plot <- function(path) {
   readfile <- read.csv(paste0(path, "summaries.csv"))
 
   df <- readfile %>%
-    mutate(r=u1/(u1+u2)) 
+    mutate(r=u1) 
+    # mutate(r=u1/(u1+u2+0.000000000000000001)) 
   
   par(cex = 1.4)
   # Create grid
