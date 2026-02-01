@@ -429,11 +429,12 @@ run_c_q_plot <- function(path) {
     out_name = "c_q"
   )
 }
+
 run_c_psi_plot <- function(path) {
   run_trait_plot(
     path,
     x_var   = "c_psi",
-    x_label = bquote("Observatin opportunity cost "(c[psi])),
+    x_label = bquote("Observation opportunity cost "(c[psi])),
     out_name = "c_psi"
   )
 }
