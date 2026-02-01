@@ -976,17 +976,17 @@ fn main() -> std::io::Result<()>  {
 
             b_f:1.0, // Baseline fecundity (offspring independence)
             b_s:0.95, // Baseline survival rate of adults (5 years lifespan)
-            b_p:0., // Brood predation risk (assuming twice the mortality of adults)
+            b_p:0.9, // Brood predation risk (assuming twice the mortality of adults)
             c_q:0.4, // survival cost of fast POL in winter 
-            c_v:0.0, // surival cost of making observations in winter
-            c_psi:1.0, // opportunity cost of making observations on provisioning
+            c_v:0.1, // surival cost of making observations in winter
+            c_psi:0.0, // opportunity cost of making observations on provisioning
             c_u:0.25, // survival cost of parental effort in winter (highest energy expenditure)
             sigma0, // Locus determining prior alpha
             sigma_cue:0.5, // sd of the cue
             varsigma:100, // the maximum sample size an individual is able to gather from cues
             h:1., // slow-fast slope of nest-defence/size/aggression (behavioural phenotypes more extreme therefore h>theta)
             theta: 1.0, // slow-fast sigmoid slope of mortality risk against q-value (physiological
-            div_rate:0.1, // divorce rate
+            div_rate:1., // divorce rate
             mean_faster_effort:0.,
             mean_slower_effort:0.,
             mean_fast_h:0.,
@@ -1017,7 +1017,7 @@ fn main() -> std::io::Result<()>  {
         let mut agent = agent.clone();
         agent.mutate(1.0, 1.0); // randomize resident loci
         env.pop = init_pop(pop_size, agent, sigma0);
-        let x = rng.gen_range(0.001..50.0); // uniform sample from parameter space
+        let x = rng.gen_range(0.0001..5.0); // uniform sample from parameter space
         env.sigma_cue = x;
         
         println!("Simulation started: sigmacue: {}, trial: {}", x, g);
